@@ -11,7 +11,6 @@ const POOL_SIZE = 250
 export class GameScene extends Phaser.Scene {
   private player!: Player
   private playerShadow!: Phaser.GameObjects.Ellipse
-  private groundTile!: Phaser.GameObjects.TileSprite
   private poolA: Phaser.GameObjects.Image[] = []
   private poolB: Phaser.GameObjects.Image[] = []
 
@@ -22,17 +21,15 @@ export class GameScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale
 
-    // ① 바닥 텍스처 (가장 밑에 깔리는 스크롤 레이어)
-    this.groundTile = this.add.tileSprite(width / 2, height / 2, width, height, 'ground')
-    this.groundTile.setDepth(0)
+    this.cameras.main.setBackgroundColor(0x111111)
 
-    // ② Graphics.generateTexture 로 마름모 타일 베이크 (100% 확실하게 동작)
+    // 마름모 타일 텍스처 베이크 (ground.png 클리핑 or 단색 폴백)
     this.bakeDiamonds()
 
-    // ③ 반투명 마름모 Image 풀 (depth 1, 바닥 위에 올라가는 체커보드 음영)
+    // Image 풀 생성
     for (let i = 0; i < POOL_SIZE; i++) {
-      this.poolA.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1).setAlpha(0.45))
-      this.poolB.push(this.add.image(-9999, -9999, 'tile-b').setDepth(1).setAlpha(0.25))
+      this.poolA.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
+      this.poolB.push(this.add.image(-9999, -9999, 'tile-b').setDepth(1))
     }
 
     // 플레이어 그림자
@@ -45,32 +42,76 @@ export class GameScene extends Phaser.Scene {
     this.drawIsoFloor()
   }
 
-  /** Graphics.generateTexture 로 다이아몬드 2종 생성 */
+  /**
+   * ground.png 를 마름모 shape 으로 클리핑해서 tile-a / tile-b 텍스처 베이크.
+   * tile-b 는 약간 어둡게 처리해 체커보드 구분.
+   * Canvas API 실패 시 단색 Graphics 폴백.
+   */
   private bakeDiamonds() {
     const halfW = TILE_W / 2
     const halfH = TILE_H / 2
+    const groundImg = this.textures.get('ground').getSourceImage() as HTMLImageElement
 
-    const defs = [
-      { key: 'tile-a', fill: 0x000000, line: 0xaabbaa }, // 어두운 타일
-      { key: 'tile-b', fill: 0xffffff, line: 0xaabbaa }, // 밝은 타일
+    const variants: { key: string; darken: number }[] = [
+      { key: 'tile-a', darken: 0 },
+      { key: 'tile-b', darken: 0.25 },
     ]
 
-    for (const { key, fill, line } of defs) {
+    for (const { key, darken } of variants) {
       if (this.textures.exists(key)) this.textures.remove(key)
 
-      const g = this.add.graphics()
-      g.fillStyle(fill, 1)
-      g.lineStyle(1, line, 1)
-      g.beginPath()
-      g.moveTo(halfW, 0)
-      g.lineTo(TILE_W, halfH)
-      g.lineTo(halfW, TILE_H)
-      g.lineTo(0, halfH)
-      g.closePath()
-      g.fillPath()
-      g.strokePath()
-      g.generateTexture(key, TILE_W, TILE_H)
-      g.destroy()
+      const ct = this.textures.createCanvas(key, TILE_W, TILE_H)
+
+      if (ct) {
+        // ── Canvas: 마름모 클리핑 후 ground.png 텍스처 그리기 ──
+        const ctx = ct.context
+
+        ctx.beginPath()
+        ctx.moveTo(halfW, 0)
+        ctx.lineTo(TILE_W, halfH)
+        ctx.lineTo(halfW, TILE_H)
+        ctx.lineTo(0, halfH)
+        ctx.closePath()
+        ctx.clip()
+
+        // ground.png 를 타일 크기에 맞게 스케일해서 붙여넣기
+        ctx.drawImage(groundImg, 0, 0, TILE_W, TILE_H)
+
+        // tile-b 는 어두운 오버레이로 체커보드 구분
+        if (darken > 0) {
+          ctx.fillStyle = `rgba(0,0,0,${darken})`
+          ctx.fillRect(0, 0, TILE_W, TILE_H)
+        }
+
+        // 테두리선
+        ctx.beginPath()
+        ctx.moveTo(halfW, 1)
+        ctx.lineTo(TILE_W - 1, halfH)
+        ctx.lineTo(halfW, TILE_H - 1)
+        ctx.lineTo(1, halfH)
+        ctx.closePath()
+        ctx.strokeStyle = 'rgba(180,210,180,0.4)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+
+        ct.refresh()
+      } else {
+        // ── 폴백: 단색 Graphics ──
+        const g = this.add.graphics()
+        const color = darken > 0 ? 0x2e4a2e : 0x3a5c3a
+        g.fillStyle(color, 1)
+        g.lineStyle(1, 0xaabbaa, 0.6)
+        g.beginPath()
+        g.moveTo(halfW, 0)
+        g.lineTo(TILE_W, halfH)
+        g.lineTo(halfW, TILE_H)
+        g.lineTo(0, halfH)
+        g.closePath()
+        g.fillPath()
+        g.strokePath()
+        g.generateTexture(key, TILE_W, TILE_H)
+        g.destroy()
+      }
     }
   }
 
@@ -114,9 +155,6 @@ export class GameScene extends Phaser.Scene {
     const { vx, vy } = this.player.update(delta)
     worldX += vx
     worldY += vy
-
-    // 바닥 텍스처 스크롤
-    this.groundTile.setTilePosition(worldX, worldY)
 
     // 마름모 타일 위치 갱신
     this.drawIsoFloor()
