@@ -5,14 +5,14 @@ let worldX = 0
 let worldY = 0
 
 const VANISH_Y_RATIO = 0.3
-const TILE_W = 96   // 마름모 가로 폭
-const TILE_H = 48   // 마름모 세로 높이 (절반으로 납작하게 = 2.5D 느낌)
+const TILE_W = 96
+const TILE_H = 48
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
   private playerShadow!: Phaser.GameObjects.Ellipse
   private skyImage!: Phaser.GameObjects.Image
-  private floorGraphics!: Phaser.GameObjects.Graphics
+  private floorRT!: Phaser.GameObjects.RenderTexture
 
   constructor() {
     super({ key: 'GameScene' })
@@ -27,14 +27,17 @@ export class GameScene extends Phaser.Scene {
     this.skyImage.setDisplaySize(width, vanishY)
     this.skyImage.setDepth(0)
 
-    // 마름모 바닥 그래픽
-    this.floorGraphics = this.add.graphics()
-    this.floorGraphics.setDepth(1)
+    // 마름모 타일 텍스처 베이크 (dark/light 두 종류)
+    this.bakeDiamondTextures()
+
+    // 바닥 렌더 텍스처 (전체 화면)
+    this.floorRT = this.add.renderTexture(0, 0, width, height)
+    this.floorRT.setDepth(1)
 
     // 지평선 글로우
     const glow = this.add.graphics()
-    glow.fillStyle(0x2a3a7a, 0.3)
-    glow.fillRect(0, vanishY - 4, width, 8)
+    glow.fillStyle(0x1a2a4a, 0.5)
+    glow.fillRect(0, vanishY - 6, width, 12)
     glow.setDepth(4)
 
     // 플레이어 그림자
@@ -47,52 +50,81 @@ export class GameScene extends Phaser.Scene {
     this.drawIsoFloor()
   }
 
+  private bakeDiamondTextures() {
+    const halfW = TILE_W / 2
+    const halfH = TILE_H / 2
+    const groundSource = this.textures.get('ground').getSourceImage() as HTMLImageElement
+
+    const variants = [
+      { key: 'tile-dark',  tint: 'rgba(0,   0,   0,   0.25)' },
+      { key: 'tile-light', tint: 'rgba(255, 255, 255, 0.08)' },
+    ]
+
+    for (const { key, tint } of variants) {
+      // 기존 텍스처 있으면 제거 (씬 재시작 대비)
+      if (this.textures.exists(key)) this.textures.remove(key)
+
+      const canvas = this.textures.createCanvas(key, TILE_W, TILE_H)
+      const ctx = canvas.context
+
+      // 마름모 클리핑 경로
+      ctx.beginPath()
+      ctx.moveTo(halfW, 0)
+      ctx.lineTo(TILE_W, halfH)
+      ctx.lineTo(halfW, TILE_H)
+      ctx.lineTo(0, halfH)
+      ctx.closePath()
+      ctx.clip()
+
+      // ground 텍스처 그리기
+      ctx.drawImage(groundSource, 0, 0, TILE_W, TILE_H)
+
+      // 명암 오버레이 (체커보드 구분)
+      ctx.fillStyle = tint
+      ctx.fillRect(0, 0, TILE_W, TILE_H)
+
+      // 테두리선
+      ctx.beginPath()
+      ctx.moveTo(halfW, 1)
+      ctx.lineTo(TILE_W - 1, halfH)
+      ctx.lineTo(halfW, TILE_H - 1)
+      ctx.lineTo(1, halfH)
+      ctx.closePath()
+      ctx.strokeStyle = 'rgba(180, 200, 180, 0.35)'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      canvas.refresh()
+    }
+  }
+
   private drawIsoFloor() {
     const { width, height } = this.scale
-    const g = this.floorGraphics
-    g.clear()
-
     const vanishY = height * VANISH_Y_RATIO
     const halfW = TILE_W / 2
     const halfH = TILE_H / 2
 
-    // 화면을 채울 만큼 범위 계산
+    this.floorRT.clear()
+
     const rangeCol = Math.ceil(width / halfW) + 6
     const rangeRow = Math.ceil((height - vanishY) / halfH) + 6
 
-    // 월드 오프셋을 타일 좌표로 변환
     const tileOffX = worldX / halfW
     const tileOffY = worldY / halfH
-
     const startCol = Math.floor((tileOffX - tileOffY) / 2) - 2
     const startRow = Math.floor((tileOffX + tileOffY) / 2) - 2
 
     for (let row = startRow; row < startRow + rangeRow; row++) {
       for (let col = startCol; col < startCol + rangeCol; col++) {
-        // 등각 투영: (col, row) → 화면 좌표
         const sx = (col - row) * halfW - worldX + width / 2
         const sy = (col + row) * halfH - worldY + vanishY + halfH * 2
 
-        // 지평선 아래만 그림
         if (sy + halfH <= vanishY) continue
         if (sy - halfH > height) continue
 
-        // 체커보드 색상
-        const isDark = (col + row) % 2 === 0
-        const fillColor = isDark ? 0x3a5c3a : 0x2e4a2e
-        const lineColor = isDark ? 0x4a7a4a : 0x3a6a3a
-
-        g.fillStyle(fillColor, 1)
-        g.lineStyle(1, lineColor, 0.8)
-
-        g.beginPath()
-        g.moveTo(sx,           sy - halfH)  // 위
-        g.lineTo(sx + halfW,   sy)           // 오른쪽
-        g.lineTo(sx,           sy + halfH)  // 아래
-        g.lineTo(sx - halfW,   sy)           // 왼쪽
-        g.closePath()
-        g.fillPath()
-        g.strokePath()
+        const tileKey = (col + row) % 2 === 0 ? 'tile-dark' : 'tile-light'
+        // draw(key, x, y) — x,y는 타일 좌상단
+        this.floorRT.draw(tileKey, sx - halfW, sy - halfH)
       }
     }
   }
