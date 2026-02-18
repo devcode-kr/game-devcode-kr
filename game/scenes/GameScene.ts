@@ -92,9 +92,9 @@ export class GameScene extends Phaser.Scene {
     const tileH = GRID_SIZE * 0.5  // 원근감을 위해 세로 압축
 
     // 화면에 보여야 할 타일 범위 계산
-    const startCol = Math.floor(worldX / tileW) - 1
+    const startCol = Math.floor(worldX / tileW) - 6  // 왼쪽 여유 확장
     const startRow = Math.floor(worldY / tileH) - 6  // 소실점 방향 5칸 추가
-    const endCol = startCol + GRID_COLS
+    const endCol = startCol + GRID_COLS + 10          // 오른쪽도 함께 확장
     const endRow = startRow + GRID_ROWS
 
     for (let row = startRow; row <= endRow; row++) {
