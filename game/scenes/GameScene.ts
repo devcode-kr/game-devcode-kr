@@ -80,8 +80,8 @@ export class GameScene extends Phaser.Scene {
         'ground'
       )
 
-      // 텍스처 스케일: 멀수록 텍스처도 작게 (값이 클수록 타일이 크고 넓게 보임)
-      strip.setTileScale(perspScale * 1.5, perspScale * 1.0)
+      // 텍스처 스케일: 소실점 근처는 매우 작고, 아래로 갈수록 제곱 비례로 급격히 커짐
+      strip.setTileScale(perspScale * perspScale * 4.0, perspScale * perspScale * 2.5)
       strip.setDepth(2)
       this.groundStrips.push(strip)
     }
@@ -98,8 +98,8 @@ export class GameScene extends Phaser.Scene {
       const t = i / NUM_STRIPS
       const perspScale = 0.05 + t * 0.95
       strip.setTilePosition(
-        worldX * perspScale * 1.5,
-        worldY * perspScale * 1.0
+        worldX * perspScale * perspScale * 4.0,
+        worldY * perspScale * perspScale * 2.5
       )
     })
 
