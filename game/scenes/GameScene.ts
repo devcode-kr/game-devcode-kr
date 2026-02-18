@@ -4,14 +4,12 @@ import { Player } from '../entities/Player'
 let worldX = 0
 let worldY = 0
 
-const VANISH_Y_RATIO = 0.3
 const TILE_W = 96
 const TILE_H = 48
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
   private playerShadow!: Phaser.GameObjects.Ellipse
-  private skyImage!: Phaser.GameObjects.Image
   private floorRT!: Phaser.GameObjects.RenderTexture
 
   constructor() {
@@ -20,26 +18,16 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale
-    const vanishY = height * VANISH_Y_RATIO
-    const groundH = height - vanishY
 
-    // 하늘
-    this.skyImage = this.add.image(width / 2, vanishY / 2, 'sky')
-    this.skyImage.setDisplaySize(width, vanishY)
-    this.skyImage.setDepth(0)
+    // 배경색 (하늘 대신 단색)
+    this.cameras.main.setBackgroundColor(0x1a1a2e)
 
     // 등각투영 마름모 텍스처 베이크
     this.bakeDiamondTextures()
 
-    // 바닥 렌더 텍스처
-    this.floorRT = this.add.renderTexture(0, vanishY, width, groundH)
+    // 바닥 렌더 텍스처 (전체 화면)
+    this.floorRT = this.add.renderTexture(0, 0, width, height)
     this.floorRT.setDepth(1)
-
-    // 지평선 글로우
-    const glow = this.add.graphics()
-    glow.fillStyle(0x1a2a4a, 0.5)
-    glow.fillRect(0, vanishY - 6, width, 12)
-    glow.setDepth(4)
 
     // 플레이어 그림자
     this.playerShadow = this.add.ellipse(width / 2, height / 2 + 10, 28, 10, 0x000000, 0.5)
@@ -52,15 +40,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * ground.png를 등각투영 변환 행렬로 마름모 모양에 맞게 베이크
-   *
-   * 변환 행렬 유도:
-   *   정사각형 [0,TW]x[0,TW] → 마름모 꼭짓점:
-   *     (0,0)   → top   (TW/2,  0)
-   *     (TW,0)  → right (TW,    TH/2)
-   *     (TW,TW) → bottom(TW/2,  TH)
-   *     (0,TW)  → left  (0,     TH/2)
-   *   ⇒ ctx.transform(0.5, 0.25, -0.5, 0.25, TW/2, 0)
+   * 정사각형 텍스처 → 등각투영 마름모로 변환해서 베이크
+   * 변환 행렬: ctx.transform(0.5, 0.25, -0.5, 0.25, TW/2, 0)
    */
   private bakeDiamondTextures() {
     const groundImg = this.textures.get('ground').getSourceImage() as HTMLImageElement
@@ -69,7 +50,7 @@ export class GameScene extends Phaser.Scene {
 
     const variants: { key: string; darken: number }[] = [
       { key: 'tile-a', darken: 0 },
-      { key: 'tile-b', darken: 0.18 },
+      { key: 'tile-b', darken: 0.2 },
     ]
 
     for (const { key, darken } of variants) {
@@ -88,7 +69,7 @@ export class GameScene extends Phaser.Scene {
       ctx.closePath()
       ctx.clip()
 
-      // 등각투영 변환 행렬 적용 후 텍스처 그리기
+      // 등각투영 변환 후 텍스처 그리기
       ctx.save()
       ctx.transform(0.5, 0.25, -0.5, 0.25, halfW, 0)
       ctx.drawImage(groundImg, 0, 0, TILE_W, TILE_W)
@@ -100,14 +81,14 @@ export class GameScene extends Phaser.Scene {
         ctx.fillRect(0, 0, TILE_W, TILE_H)
       }
 
-      // 테두리
+      // 테두리선
       ctx.beginPath()
       ctx.moveTo(halfW, 1)
       ctx.lineTo(TILE_W - 1, halfH)
       ctx.lineTo(halfW, TILE_H - 1)
       ctx.lineTo(1, halfH)
       ctx.closePath()
-      ctx.strokeStyle = 'rgba(200,220,200,0.3)'
+      ctx.strokeStyle = 'rgba(200,220,200,0.25)'
       ctx.lineWidth = 1
       ctx.stroke()
 
@@ -117,26 +98,36 @@ export class GameScene extends Phaser.Scene {
 
   private drawIsoFloor() {
     const { width, height } = this.scale
-    const vanishY = height * VANISH_Y_RATIO
-    const halfW = TILE_W / 2
-    const halfH = TILE_H / 2
+    const halfW = TILE_W / 2  // 48
+    const halfH = TILE_H / 2  // 24
 
     this.floorRT.clear()
 
-    const rangeCol = Math.ceil(width / halfW) + 6
-    const rangeRow = Math.ceil((height - vanishY) / halfH) + 6
+    /**
+     * 화면 중심 (width/2, height/2) 에 해당하는 등각 타일 좌표:
+     *   sx = (col - row) * halfW - worldX + width/2  = width/2
+     *   sy = (col + row) * halfH - worldY + height/2 = height/2
+     *
+     *   → col - row = worldX / halfW
+     *   → col + row = worldY / halfH
+     *   → col = (worldX/halfW + worldY/halfH) / 2
+     *   → row = (worldY/halfH - worldX/halfW) / 2
+     */
+    const centerCol = Math.round((worldX / halfW + worldY / halfH) / 2)
+    const centerRow = Math.round((worldY / halfH - worldX / halfW) / 2)
 
-    const startCol = Math.floor((worldX / halfW - worldY / halfH) / 2) - 2
-    const startRow = Math.floor((worldX / halfW + worldY / halfH) / 2) - 2
+    // 화면을 채울 범위 (여유 있게)
+    const rC = Math.ceil(width  / halfW) + 2  // 가로 방향 여유
+    const rR = Math.ceil(height / halfH) + 2  // 세로 방향 여유
 
-    for (let row = startRow; row < startRow + rangeRow; row++) {
-      for (let col = startCol; col < startCol + rangeCol; col++) {
-        // 등각투영 화면 좌표 (floorRT 기준, 즉 vanishY 아래부터 시작)
-        const sx = (col - row) * halfW - worldX + width / 2
-        const sy = (col + row) * halfH - worldY + halfH * 2
+    for (let col = centerCol - rC; col <= centerCol + rC; col++) {
+      for (let row = centerRow - rR; row <= centerRow + rR; row++) {
+        const sx = (col - row) * halfW - worldX + width  / 2
+        const sy = (col + row) * halfH - worldY + height / 2
 
-        if (sy + halfH <= 0) continue
-        if (sy - halfH > height - vanishY) continue
+        // 화면 밖 스킵
+        if (sx + halfW < 0 || sx - halfW > width)  continue
+        if (sy + halfH < 0 || sy - halfH > height) continue
 
         const tileKey = (col + row) % 2 === 0 ? 'tile-a' : 'tile-b'
         this.floorRT.draw(tileKey, sx - halfW, sy - halfH)
@@ -152,8 +143,7 @@ export class GameScene extends Phaser.Scene {
 
     this.drawIsoFloor()
 
-    const normalized = (height / 2) / height
-    const scale = 0.5 + normalized * 0.8
+    const scale = 1.0
     this.player.setScale(scale)
     this.playerShadow.setPosition(width / 2, height / 2 + 14 * scale)
     this.playerShadow.setScale(scale)
