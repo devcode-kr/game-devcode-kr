@@ -61,12 +61,31 @@ export class GameScene extends Phaser.Scene {
     const g = this.gridGraphics
     g.clear()
 
-    // 배경
-    g.fillStyle(0x1a1a2e)
-    g.fillRect(0, 0, width, height)
-
+    // 하늘 그라디언트 (소실점 위쪽)
     const vanishX = width / 2
     const vanishY = height * 0.3   // 소실점 (화면 30% 지점)
+
+    // 하늘: 위(어두운 남색) → 소실점(밝은 남색) 그라디언트
+    const skySteps = 12
+    for (let i = 0; i < skySteps; i++) {
+      const t = i / skySteps
+      const y = (vanishY / skySteps) * i
+      const h = vanishY / skySteps + 1
+      // 위쪽: 0x0a0a1a, 소실점: 0x1e2a5e
+      const r = Math.round(0x0a + (0x1e - 0x0a) * t)
+      const gv = Math.round(0x0a + (0x2a - 0x0a) * t)
+      const b = Math.round(0x1a + (0x5e - 0x1a) * t)
+      g.fillStyle((r << 16) | (gv << 8) | b)
+      g.fillRect(0, y, width, h)
+    }
+
+    // 지면 배경
+    g.fillStyle(0x1a1a2e)
+    g.fillRect(0, vanishY, width, height - vanishY)
+
+    // 지평선 글로우 (소실점 근처 밝은 띠)
+    g.fillStyle(0x2a3a7a, 0.3)
+    g.fillRect(0, vanishY - 6, width, 12)
 
     // 월드 오프셋 기반으로 격자 타일 그리기
     const tileW = GRID_SIZE
