@@ -6,11 +6,13 @@ let worldY = 0
 
 const TILE_W = 96
 const TILE_H = 48
+const POOL_SIZE = 300  // 화면에 최대로 보이는 타일 수
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
   private playerShadow!: Phaser.GameObjects.Ellipse
-  private floorRT!: Phaser.GameObjects.RenderTexture
+  private poolA: Phaser.GameObjects.Image[] = []  // (col+row) % 2 === 0
+  private poolB: Phaser.GameObjects.Image[] = []  // (col+row) % 2 === 1
 
   constructor() {
     super({ key: 'GameScene' })
@@ -19,15 +21,18 @@ export class GameScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale
 
-    // 배경색 (하늘 대신 단색)
     this.cameras.main.setBackgroundColor(0x1a1a2e)
 
     // 등각투영 마름모 텍스처 베이크
     this.bakeDiamondTextures()
 
-    // 바닥 렌더 텍스처 (전체 화면)
-    this.floorRT = this.add.renderTexture(0, 0, width, height)
-    this.floorRT.setDepth(1)
+    // 타일 이미지 풀 생성 (화면 밖에 대기)
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const a = this.add.image(-9999, -9999, 'tile-a').setDepth(1)
+      const b = this.add.image(-9999, -9999, 'tile-b').setDepth(1)
+      this.poolA.push(a)
+      this.poolB.push(b)
+    }
 
     // 플레이어 그림자
     this.playerShadow = this.add.ellipse(width / 2, height / 2 + 10, 28, 10, 0x000000, 0.5)
@@ -40,8 +45,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 정사각형 텍스처 → 등각투영 마름모로 변환해서 베이크
-   * 변환 행렬: ctx.transform(0.5, 0.25, -0.5, 0.25, TW/2, 0)
+   * 정사각형 ground.png → 등각투영 마름모 텍스처 베이크
+   * 변환 행렬: ctx.transform(0.5, 0.25, -0.5, 0.25, halfW, 0)
+   *   (0,0)   → (halfW, 0)      ← 마름모 위 꼭짓점
+   *   (TW,0)  → (TW,   halfH)   ← 오른쪽
+   *   (TW,TW) → (halfW, TH)     ← 아래
+   *   (0, TW) → (0,    halfH)   ← 왼쪽
    */
   private bakeDiamondTextures() {
     const groundImg = this.textures.get('ground').getSourceImage() as HTMLImageElement
@@ -101,38 +110,46 @@ export class GameScene extends Phaser.Scene {
     const halfW = TILE_W / 2  // 48
     const halfH = TILE_H / 2  // 24
 
-    this.floorRT.clear()
-
     /**
-     * 화면 중심 (width/2, height/2) 에 해당하는 등각 타일 좌표:
-     *   sx = (col - row) * halfW - worldX + width/2  = width/2
-     *   sy = (col + row) * halfH - worldY + height/2 = height/2
-     *
-     *   → col - row = worldX / halfW
-     *   → col + row = worldY / halfH
+     * 화면 중심(width/2, height/2)에 해당하는 타일 좌표:
+     *   sx = (col-row)*halfW - worldX + width/2  = width/2  → col-row = worldX/halfW
+     *   sy = (col+row)*halfH - worldY + height/2 = height/2 → col+row = worldY/halfH
      *   → col = (worldX/halfW + worldY/halfH) / 2
      *   → row = (worldY/halfH - worldX/halfW) / 2
      */
     const centerCol = Math.round((worldX / halfW + worldY / halfH) / 2)
     const centerRow = Math.round((worldY / halfH - worldX / halfW) / 2)
 
-    // 화면을 채울 범위 (여유 있게)
-    const rC = Math.ceil(width  / halfW) + 2  // 가로 방향 여유
-    const rR = Math.ceil(height / halfH) + 2  // 세로 방향 여유
+    const rC = Math.ceil(width  / halfW) + 2
+    const rR = Math.ceil(height / halfH) + 2
+
+    let idxA = 0
+    let idxB = 0
 
     for (let col = centerCol - rC; col <= centerCol + rC; col++) {
       for (let row = centerRow - rR; row <= centerRow + rR; row++) {
         const sx = (col - row) * halfW - worldX + width  / 2
         const sy = (col + row) * halfH - worldY + height / 2
 
-        // 화면 밖 스킵
+        // 화면 밖 스킵 (타일 반폭/반높이 만큼 여유)
         if (sx + halfW < 0 || sx - halfW > width)  continue
         if (sy + halfH < 0 || sy - halfH > height) continue
 
-        const tileKey = (col + row) % 2 === 0 ? 'tile-a' : 'tile-b'
-        this.floorRT.draw(tileKey, sx - halfW, sy - halfH)
+        if ((col + row) % 2 === 0) {
+          if (idxA < this.poolA.length) {
+            this.poolA[idxA++].setPosition(sx, sy)
+          }
+        } else {
+          if (idxB < this.poolB.length) {
+            this.poolB[idxB++].setPosition(sx, sy)
+          }
+        }
       }
     }
+
+    // 미사용 풀 타일 화면 밖으로
+    for (; idxA < this.poolA.length; idxA++) this.poolA[idxA].setPosition(-9999, -9999)
+    for (; idxB < this.poolB.length; idxB++) this.poolB[idxB].setPosition(-9999, -9999)
   }
 
   update(_time: number, delta: number) {
@@ -143,9 +160,7 @@ export class GameScene extends Phaser.Scene {
 
     this.drawIsoFloor()
 
-    const scale = 1.0
-    this.player.setScale(scale)
-    this.playerShadow.setPosition(width / 2, height / 2 + 14 * scale)
-    this.playerShadow.setScale(scale)
+    this.player.setScale(1.0)
+    this.playerShadow.setPosition(width / 2, height / 2 + 14)
   }
 }
