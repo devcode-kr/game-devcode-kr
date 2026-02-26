@@ -15,7 +15,8 @@ export class GameScene extends Phaser.Scene {
   private player!: Player
   private playerShadow!: Phaser.GameObjects.Ellipse
   private dungeon!: BSPDungeon
-  private tilePool: Phaser.GameObjects.Image[] = []
+  private floorPool: Phaser.GameObjects.Image[] = []
+  private wallPool: Phaser.GameObjects.Image[] = []
   private portal!: Portal
   private enemies: Enemy[] = []
   private onPlayerMove?: (x: number, y: number) => void
@@ -35,17 +36,20 @@ export class GameScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale
 
-    this.cameras.main.setBackgroundColor(0x111111)
+    this.cameras.main.setBackgroundColor('#1a1a2e')
 
     // BSP 던전 생성
     this.generateDungeon()
 
-    // 마름모 타일 텍스처 베이크
-    this.bakeDiamonds()
+    // 새 타일 텍스처 베이크 (마름모 클리핑)
+    this.bakeTileTextures()
 
     // Image 풀 생성
     for (let i = 0; i < POOL_SIZE; i++) {
-      this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
+      this.floorPool.push(this.add.image(-9999, -9999, 'floor-light').setDepth(1))
+    }
+    for (let i = 0; i < 500; i++) {
+      this.wallPool.push(this.add.image(-9999, -9999, 'wall').setDepth(100))
     }
 
     // 플레이어 그림자
@@ -74,6 +78,52 @@ export class GameScene extends Phaser.Scene {
     console.log('Dungeon generated with', this.dungeon.getRooms().length, 'rooms')
   }
 
+  private bakeTileTextures() {
+    // 기존 텍스처 제거
+    const keys = ['floor-light', 'floor-dark', 'wall']
+    for (const key of keys) {
+      if (this.textures.exists(key)) this.textures.remove(key)
+    }
+
+    // 바닥 타일 (밝은 버전)
+    this.createDiamondTexture('floor-light', 'floor-stone', 0)
+    // 바닥 타일 (어두운 버전)
+    this.createDiamondTexture('floor-dark', 'floor-stone-dark', 0)
+    // 벽 타일
+    this.createDiamondTexture('wall', 'wall-stone', 0)
+  }
+
+  private createDiamondTexture(key: string, sourceKey: string, darken: number) {
+    const halfW = TILE_W / 2
+    const halfH = TILE_H / 2
+    const sourceImg = this.textures.get(sourceKey).getSourceImage() as HTMLImageElement
+
+    const ct = this.textures.createCanvas(key, TILE_W, TILE_H)
+    if (!ct) return
+
+    const ctx = ct.context
+
+    // 마름모 클리핑
+    ctx.beginPath()
+    ctx.moveTo(halfW, 0)
+    ctx.lineTo(TILE_W, halfH)
+    ctx.lineTo(halfW, TILE_H)
+    ctx.lineTo(0, halfH)
+    ctx.closePath()
+    ctx.clip()
+
+    // 이미지 그리기
+    ctx.drawImage(sourceImg, 0, 0, TILE_W, TILE_H)
+
+    // 어둡게 처리 (선택적)
+    if (darken > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${darken})`
+      ctx.fillRect(0, 0, TILE_W, TILE_H)
+    }
+
+    ct.refresh()
+  }
+
   private spawnPortal() {
     const rooms = this.dungeon.getRooms()
     if (rooms.length === 0) return
@@ -99,12 +149,11 @@ export class GameScene extends Phaser.Scene {
       const dist = Math.sqrt(
         Math.pow(r.centerX - startPos.x, 2) + Math.pow(r.centerY - startPos.y, 2)
       )
-      return dist > 5 // 5타일 이상 떨어진 방
+      return dist > 5
     })
 
     for (let i = 0; i < count && i < validRooms.length; i++) {
       const room = validRooms[i % validRooms.length]
-      // 방 난수 위치
       const ex = (room.x + 1 + Math.random() * (room.width - 2)) * TILE_W
       const ey = (room.y + 1 + Math.random() * (room.height - 2)) * TILE_H
 
@@ -129,77 +178,16 @@ export class GameScene extends Phaser.Scene {
     this.spawnEnemies(5 + Math.floor(Math.random() * 3))
   }
 
-  private bakeDiamonds() {
-    const halfW = TILE_W / 2
-    const halfH = TILE_H / 2
-    const groundImg = this.textures.get('ground').getSourceImage() as HTMLImageElement
-
-    const variants: { key: string; darken: number }[] = [
-      { key: 'tile-a', darken: 0 },
-      { key: 'tile-b', darken: 0.25 },
-    ]
-
-    for (const { key, darken } of variants) {
-      if (this.textures.exists(key)) this.textures.remove(key)
-
-      const ct = this.textures.createCanvas(key, TILE_W, TILE_H)
-
-      if (ct) {
-        const ctx = ct.context
-
-        ctx.beginPath()
-        ctx.moveTo(halfW, 0)
-        ctx.lineTo(TILE_W, halfH)
-        ctx.lineTo(halfW, TILE_H)
-        ctx.lineTo(0, halfH)
-        ctx.closePath()
-        ctx.clip()
-
-        ctx.drawImage(groundImg, 0, 0, TILE_W, TILE_H)
-
-        if (darken > 0) {
-          ctx.fillStyle = `rgba(0,0,0,${darken})`
-          ctx.fillRect(0, 0, TILE_W, TILE_H)
-        }
-
-        ctx.beginPath()
-        ctx.moveTo(halfW, 1)
-        ctx.lineTo(TILE_W - 1, halfH)
-        ctx.lineTo(halfW, TILE_H - 1)
-        ctx.lineTo(1, halfH)
-        ctx.closePath()
-        ctx.strokeStyle = 'rgba(180,210,180,0.4)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-
-        ct.refresh()
-      } else {
-        const g = this.add.graphics()
-        const color = darken > 0 ? 0x2e4a2e : 0x3a5c3a
-        g.fillStyle(color, 1)
-        g.lineStyle(1, 0xaabbaa, 0.6)
-        g.beginPath()
-        g.moveTo(halfW, 0)
-        g.lineTo(TILE_W, halfH)
-        g.lineTo(halfW, TILE_H)
-        g.lineTo(0, halfH)
-        g.closePath()
-        g.fillPath()
-        g.strokePath()
-        g.generateTexture(key, TILE_W, TILE_H)
-        g.destroy()
-      }
-    }
-  }
-
   private drawDungeon() {
     const { width, height } = this.scale
     const halfW = TILE_W / 2
     const halfH = TILE_H / 2
 
     const grid = this.dungeon.getGrid()
-    let poolIdx = 0
+    let floorIdx = 0
+    let wallIdx = 0
 
+    // First pass: render floor tiles
     for (let gy = 0; gy < this.dungeon.height; gy++) {
       for (let gx = 0; gx < this.dungeon.width; gx++) {
         const tile = grid[gy][gx]
@@ -214,16 +202,59 @@ export class GameScene extends Phaser.Scene {
         if (sx + halfW < 0 || sx - halfW > width) continue
         if (sy + halfH < 0 || sy - halfH > height) continue
 
-        if (poolIdx < this.tilePool.length) {
-          const image = this.tilePool[poolIdx++]
+        if (floorIdx < this.floorPool.length) {
+          const image = this.floorPool[floorIdx++]
           image.setPosition(sx, sy)
-          image.setTexture((gx + gy) % 2 === 0 ? 'tile-a' : 'tile-b')
+          // 체커보드 패턴: FLOOR와 CORRIDOR 다른 텍스처
+          if (tile === TileType.CORRIDOR) {
+            image.setTexture('floor-dark')
+          } else {
+            image.setTexture((gx + gy) % 2 === 0 ? 'floor-light' : 'floor-dark')
+          }
         }
       }
     }
 
-    for (; poolIdx < this.tilePool.length; poolIdx++) {
-      this.tilePool[poolIdx].setPosition(-9999, -9999)
+    // Hide unused floor tiles
+    for (; floorIdx < this.floorPool.length; floorIdx++) {
+      this.floorPool[floorIdx].setPosition(-9999, -9999)
+    }
+
+    // Second pass: render wall tiles (edges of walkable areas)
+    for (let gy = 0; gy < this.dungeon.height; gy++) {
+      for (let gx = 0; gx < this.dungeon.width; gx++) {
+        const tile = grid[gy][gx]
+        if (tile !== TileType.WALL) continue
+
+        // 벽 옆에 바닥이 있는 경우만 렌더링 (가장자리 벽)
+        const hasAdjacentFloor = (
+          (gy > 0 && grid[gy - 1][gx] !== TileType.WALL) ||
+          (gy < this.dungeon.height - 1 && grid[gy + 1][gx] !== TileType.WALL) ||
+          (gx > 0 && grid[gy][gx - 1] !== TileType.WALL) ||
+          (gx < this.dungeon.width - 1 && grid[gy][gx + 1] !== TileType.WALL)
+        )
+        if (!hasAdjacentFloor) continue
+
+        const tw = gx * TILE_W
+        const th = gy * TILE_H
+
+        const sx = tw - worldX + width / 2
+        const sy = th - worldY + height / 2
+
+        if (sx + halfW < 0 || sx - halfW > width) continue
+        if (sy + halfH < 0 || sy - halfH > height) continue
+
+        if (wallIdx < this.wallPool.length) {
+          const image = this.wallPool[wallIdx++]
+          image.setPosition(sx, sy)
+          image.setTexture('wall')
+        }
+      }
+    }
+
+    // Hide unused wall tiles
+    for (; wallIdx < this.wallPool.length; wallIdx++) {
+      this.wallPool[wallIdx].setPosition(-9999, -9999)
     }
 
     // Update portal position
@@ -238,7 +269,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Update enemies position (relative to camera)
+    // Update enemies position
     this.enemies.forEach((enemy) => {
       const pos = enemy.getPosition()
       enemy.x = pos.x - worldX + width / 2
