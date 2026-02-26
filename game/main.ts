@@ -2,8 +2,10 @@ import * as Phaser from 'phaser'
 import { PreloadScene } from './scenes/PreloadScene'
 import { GameScene } from './scenes/GameScene'
 
+let gameInstance: Phaser.Game | null = null
+
 export function createGame(parent: HTMLElement): Phaser.Game {
-  return new Phaser.Game({
+  gameInstance = new Phaser.Game({
     type: Phaser.AUTO,
     width: 800,
     height: 600,
@@ -19,4 +21,11 @@ export function createGame(parent: HTMLElement): Phaser.Game {
       arcade: { debug: false },
     },
   })
+  return gameInstance
+}
+
+export function getGameScene(): GameScene | null {
+  if (!gameInstance) return null
+  const scene = gameInstance.scene.getScene('GameScene') as GameScene
+  return scene || null
 }
