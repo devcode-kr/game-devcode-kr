@@ -1,6 +1,8 @@
 import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
-import { BSPDungeon, TileType } from '../map/BSPDungeon'
+import { Portal } from '../entities/Portal'
+import { Enemy } from '../entities/Enemy'
+import { BSPDungeon, TileType, Room } from '../map/BSPDungeon'
 
 let worldX = 0
 let worldY = 0
@@ -14,9 +16,20 @@ export class GameScene extends Phaser.Scene {
   private playerShadow!: Phaser.GameObjects.Ellipse
   private dungeon!: BSPDungeon
   private tilePool: Phaser.GameObjects.Image[] = []
+  private portal!: Portal
+  private enemies: Enemy[] = []
+  private onPlayerMove?: (x: number, y: number) => void
 
   constructor() {
     super({ key: 'GameScene' })
+  }
+
+  setOnPlayerMove(callback: (x: number, y: number) => void) {
+    this.onPlayerMove = callback
+  }
+
+  getDungeon(): BSPDungeon | null {
+    return this.dungeon
   }
 
   create() {
@@ -25,14 +38,12 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(0x111111)
 
     // BSP 던전 생성
-    this.dungeon = new BSPDungeon(80, 80)
-    this.dungeon.generate()
-    console.log('Dungeon generated with', this.dungeon.getRooms().length, 'rooms')
+    this.generateDungeon()
 
-    // 마름모 타일 텍스처 베이크 (ground.png 클리핑 or 단색 폰백)
+    // 마름모 타일 텍스처 베이크
     this.bakeDiamonds()
 
-    // Image 풀 생성 (던전용)
+    // Image 풀 생성
     for (let i = 0; i < POOL_SIZE; i++) {
       this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
     }
@@ -48,14 +59,76 @@ export class GameScene extends Phaser.Scene {
 
     this.player = new Player(this, width / 2, height / 2)
 
+    // 포털 생성 (마지막 방)
+    this.spawnPortal()
+
+    // 적 생성
+    this.spawnEnemies(5)
+
     this.drawDungeon()
   }
 
-  /**
-   * ground.png 를 마름모 shape 으로 클리핑해서 tile-a / tile-b 텍스처 베이크.
-   * tile-b 는 약간 어둡게 처리해 체커보드 구분.
-   * Canvas API 실패 시 단색 Graphics 폰백.
-   */
+  private generateDungeon() {
+    this.dungeon = new BSPDungeon(80, 80)
+    this.dungeon.generate()
+    console.log('Dungeon generated with', this.dungeon.getRooms().length, 'rooms')
+  }
+
+  private spawnPortal() {
+    const rooms = this.dungeon.getRooms()
+    if (rooms.length === 0) return
+
+    // 마지막 방에 포털 생성
+    const lastRoom = rooms[rooms.length - 1]
+    const px = lastRoom.centerX * TILE_W
+    const py = lastRoom.centerY * TILE_H
+
+    const { width, height } = this.scale
+    const sx = px - worldX + width / 2
+    const sy = py - worldY + height / 2
+
+    this.portal = new Portal(this, sx, sy)
+  }
+
+  private spawnEnemies(count: number) {
+    const rooms = this.dungeon.getRooms()
+    const startPos = this.dungeon.getStartPosition()
+
+    // 시작 방 제외하고 적 생성
+    const validRooms = rooms.filter((r) => {
+      const dist = Math.sqrt(
+        Math.pow(r.centerX - startPos.x, 2) + Math.pow(r.centerY - startPos.y, 2)
+      )
+      return dist > 5 // 5타일 이상 떨어진 방
+    })
+
+    for (let i = 0; i < count && i < validRooms.length; i++) {
+      const room = validRooms[i % validRooms.length]
+      // 방 난수 위치
+      const ex = (room.x + 1 + Math.random() * (room.width - 2)) * TILE_W
+      const ey = (room.y + 1 + Math.random() * (room.height - 2)) * TILE_H
+
+      const enemy = new Enemy(this, ex, ey, this.dungeon, TILE_W, TILE_H)
+      this.enemies.push(enemy)
+    }
+  }
+
+  private regenerateDungeon() {
+    // Clean up
+    this.enemies.forEach((e) => e.destroy())
+    this.enemies = []
+    if (this.portal) this.portal.destroy()
+
+    // Generate new
+    this.generateDungeon()
+    const startPos = this.dungeon.getStartPosition()
+    worldX = startPos.x * TILE_W
+    worldY = startPos.y * TILE_H
+
+    this.spawnPortal()
+    this.spawnEnemies(5 + Math.floor(Math.random() * 3))
+  }
+
   private bakeDiamonds() {
     const halfW = TILE_W / 2
     const halfH = TILE_H / 2
@@ -72,7 +145,6 @@ export class GameScene extends Phaser.Scene {
       const ct = this.textures.createCanvas(key, TILE_W, TILE_H)
 
       if (ct) {
-        // ── Canvas: 마름모 클리핑 후 ground.png 텍스처 그리기 ──
         const ctx = ct.context
 
         ctx.beginPath()
@@ -83,16 +155,13 @@ export class GameScene extends Phaser.Scene {
         ctx.closePath()
         ctx.clip()
 
-        // ground.png 를 타일 크기에 맞게 스케일해서 붙여넣기
         ctx.drawImage(groundImg, 0, 0, TILE_W, TILE_H)
 
-        // tile-b 는 어두운 오버레이로 체커보드 구분
         if (darken > 0) {
           ctx.fillStyle = `rgba(0,0,0,${darken})`
           ctx.fillRect(0, 0, TILE_W, TILE_H)
         }
 
-        // 테두리선
         ctx.beginPath()
         ctx.moveTo(halfW, 1)
         ctx.lineTo(TILE_W - 1, halfH)
@@ -105,7 +174,6 @@ export class GameScene extends Phaser.Scene {
 
         ct.refresh()
       } else {
-        // ── 폰백: 단색 Graphics ──
         const g = this.add.graphics()
         const color = darken > 0 ? 0x2e4a2e : 0x3a5c3a
         g.fillStyle(color, 1)
@@ -137,15 +205,12 @@ export class GameScene extends Phaser.Scene {
         const tile = grid[gy][gx]
         if (tile === TileType.WALL) continue
 
-        // 타일 월드 좌표
         const tw = gx * TILE_W
         const th = gy * TILE_H
 
-        // 화면 좌표로 변환 (isometric)
         const sx = tw - worldX + width / 2
         const sy = th - worldY + height / 2
 
-        // 화면 밖이면 스킵
         if (sx + halfW < 0 || sx - halfW > width) continue
         if (sy + halfH < 0 || sy - halfH > height) continue
 
@@ -157,14 +222,31 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 사용하지 않는 풀 타일 숨김
     for (; poolIdx < this.tilePool.length; poolIdx++) {
       this.tilePool[poolIdx].setPosition(-9999, -9999)
     }
+
+    // Update portal position
+    if (this.portal) {
+      const rooms = this.dungeon.getRooms()
+      if (rooms.length > 0) {
+        const lastRoom = rooms[rooms.length - 1]
+        const px = lastRoom.centerX * TILE_W
+        const py = lastRoom.centerY * TILE_H
+        this.portal.x = px - worldX + width / 2
+        this.portal.y = py - worldY + height / 2
+      }
+    }
+
+    // Update enemies position (relative to camera)
+    this.enemies.forEach((enemy) => {
+      const pos = enemy.getPosition()
+      enemy.x = pos.x - worldX + width / 2
+      enemy.y = pos.y - worldY + height / 2
+    })
   }
 
   private checkCollision(newX: number, newY: number): boolean {
-    // 월드 좌표를 그리드 좌표로 변환
     const gx = Math.floor(newX / TILE_W)
     const gy = Math.floor(newY / TILE_H)
     return this.dungeon.isWalkable(gx, gy)
@@ -174,20 +256,40 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale
     const { vx, vy } = this.player.update(delta)
 
-    // 충돌 검사
     const newX = worldX + vx
     const newY = worldY + vy
 
-    // X축 이동 검사
     if (this.checkCollision(newX, worldY)) {
       worldX = newX
     }
-    // Y축 이동 검사
     if (this.checkCollision(worldX, newY)) {
       worldY = newY
     }
 
-    // 던전 타일 위치 갱신
+    // Notify minimap
+    if (this.onPlayerMove) {
+      this.onPlayerMove(worldX, worldY)
+    }
+
+    // Check portal collision
+    if (this.portal) {
+      const playerScreenX = width / 2
+      const playerScreenY = height / 2
+      if (this.portal.checkCollision(playerScreenX, playerScreenY)) {
+        console.log('Portal touched! Generating new dungeon...')
+        this.regenerateDungeon()
+        return
+      }
+      this.portal.update(_time)
+    }
+
+    // Update enemies
+    const playerWorldX = worldX + width / 2
+    const playerWorldY = worldY + height / 2
+    this.enemies.forEach((enemy) => {
+      enemy.update(delta, playerWorldX, playerWorldY)
+    })
+
     this.drawDungeon()
 
     this.player.setScale(1.0)
