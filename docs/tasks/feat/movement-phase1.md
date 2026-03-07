@@ -306,3 +306,7 @@ node scripts/generate-character-sheet.mjs
 - Expanded the test sprite sheet to 8 columns in this order: `N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, `NW`.
 - Updated player facing quantization from 4 directions to 8 directions using the movement vector angle.
 - Idle keeps 2 frames and run keeps 3 frames across all 8 directions.
+
+## Frame stability
+- Replaced `setCrop`-based sprite selection with real spritesheet frame selection to keep the player anchor stable across direction/frame changes.
+- Preload now uses `load.spritesheet(..., { frameWidth: 64, frameHeight: 128 })` and Player uses `setFrame(row * 8 + column)`.
