@@ -1,5 +1,5 @@
 import { getItemDefinition } from '../items/ItemCatalog'
-import { addInventoryItemBatch, getInventoryItemCount } from '../items/InventoryUtils'
+import { addInventoryItemBatchToInventories, getItemCountAcrossInventories } from '../items/InventoryUtils'
 import { getChestRewardItemDefinitionId } from '../loot/ChestRewards'
 import type { AchievementState, JourneyLog } from '../progress/ProgressStore'
 import { markChestOpened, markKeyCollected, markLockedChestOpened } from '../progress/ProgressionRules'
@@ -12,18 +12,18 @@ export interface ChestOpenResult {
   unlocked: string[]
 }
 
-export function canOpenLockedChest(inventory: InventoryState): boolean {
-  return getInventoryItemCount(inventory, 'utility_key') > 0
+export function canOpenLockedChest(inventories: InventoryState[]): boolean {
+  return getItemCountAcrossInventories(inventories, 'utility_key') > 0
 }
 
 export function openChest(params: {
   interactable: Interactable
-  inventory: InventoryState
+  inventories: InventoryState[]
   journeyLog: JourneyLog
   achievements: AchievementState
   consumeKey: () => void
 }): ChestOpenResult {
-  const { interactable, inventory, journeyLog, achievements, consumeKey } = params
+  const { interactable, inventories, journeyLog, achievements, consumeKey } = params
 
   if (interactable.used) {
     return {
@@ -33,7 +33,7 @@ export function openChest(params: {
     }
   }
 
-  if (interactable.kind === 'locked-chest' && !canOpenLockedChest(inventory)) {
+  if (interactable.kind === 'locked-chest' && !canOpenLockedChest(inventories)) {
     return {
       status: 'locked chest: need key',
       goldDelta: 0,
@@ -50,7 +50,7 @@ export function openChest(params: {
   interactable.used = true
   unlocked.push(...markChestOpened(achievements))
 
-  const rewardResult = applyChestReward(interactable.reward, inventory, journeyLog, achievements, interactable.kind === 'locked-chest')
+  const rewardResult = applyChestReward(interactable.reward, inventories, journeyLog, achievements, interactable.kind === 'locked-chest')
   unlocked.push(...rewardResult.unlocked)
 
   return {
@@ -62,7 +62,7 @@ export function openChest(params: {
 
 function applyChestReward(
   reward: ChestReward | undefined,
-  inventory: InventoryState,
+  inventories: InventoryState[],
   journeyLog: JourneyLog,
   achievements: AchievementState,
   wasLocked: boolean
@@ -92,7 +92,7 @@ function applyChestReward(
     }
   }
 
-  const addedCount = addInventoryItemBatch(inventory, itemDefinitionId, reward.amount)
+  const addedCount = addInventoryItemBatchToInventories(itemDefinitionId, reward.amount, inventories)
   const itemName = getItemDefinition(itemDefinitionId).name
   const unlocked = reward.kind === 'key'
     ? markKeyCollected(journeyLog, achievements, addedCount)

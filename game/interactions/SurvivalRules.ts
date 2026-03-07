@@ -11,33 +11,124 @@ export function tryUsePotion(params: {
   inventory: InventoryState
   health: number
   maxHealth: number
-}): { used: boolean; health: number; status: string } {
-  if (params.health >= params.maxHealth) {
+  mana: number
+  maxMana: number
+  poisoned: boolean
+}): InventoryItemUseResult {
+  return applyInventoryItemUse({
+    inventory: params.inventory,
+    itemDefinitionId: 'potion_minor',
+    health: params.health,
+    maxHealth: params.maxHealth,
+    mana: params.mana,
+    maxMana: params.maxMana,
+    poisoned: params.poisoned,
+  })
+}
+
+export interface InventoryItemUseResult {
+  used: boolean
+  health: number
+  mana: number
+  poisoned: boolean
+  guardDurationMs: number
+  status: string
+}
+
+export function applyInventoryItemUse(params: {
+  inventory: InventoryState
+  itemDefinitionId: string
+  health: number
+  maxHealth: number
+  mana: number
+  maxMana: number
+  poisoned: boolean
+}): InventoryItemUseResult {
+  const definition = getItemDefinition(params.itemDefinitionId)
+
+  if (
+    !definition.healAmount &&
+    !definition.manaAmount &&
+    !definition.curesPoison &&
+    !definition.guardDurationMs
+  ) {
     return {
       used: false,
       health: params.health,
+      mana: params.mana,
+      poisoned: params.poisoned,
+      guardDurationMs: 0,
+      status: `${definition.name} cannot be used right now`,
+    }
+  }
+
+  if (definition.healAmount && params.health >= params.maxHealth) {
+    return {
+      used: false,
+      health: params.health,
+      mana: params.mana,
+      poisoned: params.poisoned,
+      guardDurationMs: 0,
       status: 'health already full',
     }
   }
 
-  const removedItem = removeSingleItemByDefinition(params.inventory, 'potion_minor')
+  if (definition.manaAmount && params.mana >= params.maxMana) {
+    return {
+      used: false,
+      health: params.health,
+      mana: params.mana,
+      poisoned: params.poisoned,
+      guardDurationMs: 0,
+      status: 'mana already full',
+    }
+  }
+
+  if (definition.curesPoison && !params.poisoned) {
+    return {
+      used: false,
+      health: params.health,
+      mana: params.mana,
+      poisoned: params.poisoned,
+      guardDurationMs: 0,
+      status: 'no poison to cure',
+    }
+  }
+
+  const removedItem = removeSingleItemByDefinition(params.inventory, params.itemDefinitionId)
   if (!removedItem) {
     return {
       used: false,
       health: params.health,
-      status: 'no potion to use',
+      mana: params.mana,
+      poisoned: params.poisoned,
+      guardDurationMs: 0,
+      status: `no ${definition.name} to use`,
     }
   }
 
-  const potionDefinition = getItemDefinition('potion_minor')
-  const healAmount = potionDefinition.healAmount ?? 0
+  const healAmount = definition.healAmount ?? 0
+  const manaAmount = definition.manaAmount ?? 0
   const nextHealth = Math.min(params.maxHealth, params.health + healAmount)
+  const nextMana = Math.min(params.maxMana, params.mana + manaAmount)
   const healed = nextHealth - params.health
+  const restoredMana = nextMana - params.mana
+  const curedPoison = definition.curesPoison && params.poisoned
+  const guardDurationMs = definition.guardDurationMs ?? 0
+  const effects = [
+    healed > 0 ? `+${healed} health` : null,
+    restoredMana > 0 ? `+${restoredMana} mana` : null,
+    curedPoison ? 'cured poison' : null,
+    guardDurationMs > 0 ? `guard ${Math.floor(guardDurationMs / 1000)}s` : null,
+  ].filter(Boolean)
 
   return {
     used: true,
     health: nextHealth,
-    status: `used ${potionDefinition.name}: +${healed} health`,
+    mana: nextMana,
+    poisoned: definition.curesPoison ? false : params.poisoned,
+    guardDurationMs,
+    status: `used ${definition.name}: ${effects.join(', ')}`,
   }
 }
 
@@ -47,26 +138,35 @@ export function triggerTrap(params: {
   trapRearmMs: number
   trapDamageAmount: number
   health: number
-}): { triggered: boolean; health: number; status: string } {
+  poisoned: boolean
+  guardActive: boolean
+}): { triggered: boolean; health: number; poisoned: boolean; status: string } {
   const { trap, now, trapRearmMs, trapDamageAmount, health } = params
   if (!trap || health <= 0) {
-    return { triggered: false, health, status: '' }
+    return { triggered: false, health, poisoned: params.poisoned, status: '' }
   }
 
   if (now - trap.lastTriggeredAt < trapRearmMs) {
-    return { triggered: false, health, status: '' }
+    return { triggered: false, health, poisoned: params.poisoned, status: '' }
   }
 
   trap.lastTriggeredAt = now
-  const nextHealth = Math.max(0, health - trapDamageAmount)
+  const appliedDamage = params.guardActive ? Math.ceil(trapDamageAmount * 0.5) : trapDamageAmount
+  const nextHealth = Math.max(0, health - appliedDamage)
+  const poisoned = nextHealth > 0 ? true : params.poisoned
 
   return {
     triggered: true,
     health: nextHealth,
+    poisoned,
     status: nextHealth <= 0
-      ? `triggered trap: -${trapDamageAmount} health, died`
-      : `triggered trap: -${trapDamageAmount} health`,
+      ? `triggered trap: -${appliedDamage} health, died`
+      : `triggered trap: -${appliedDamage} health${poisoned && !params.poisoned ? ', poisoned' : ''}`,
   }
+}
+
+export function isGuardActive(guardBuffUntil: number, now: number): boolean {
+  return guardBuffUntil > now
 }
 
 export function applyDebugDamage(health: number, damageAmount: number): { health: number; status: string } {

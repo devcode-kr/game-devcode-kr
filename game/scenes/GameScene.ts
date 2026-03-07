@@ -2,12 +2,15 @@ import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
 import {
   createEmptyInventory,
+  moveInventoryStack,
   removeSingleItemByDefinition,
+  transferInventoryStack,
   type InventoryState,
 } from '../items/Inventory'
 import {
-  getInventoryItemCount,
+  addInventoryItems,
   getInventorySummaryText,
+  getItemCountAcrossInventories,
 } from '../items/InventoryUtils'
 import {
   canOccupy,
@@ -25,12 +28,13 @@ import {
   type ActiveDialogue,
 } from '../interactions/DialogueFlow'
 import {
+  applyInventoryItemUse,
   applyDebugDamage,
   getRespawnHealth,
   getRespawnPosition,
+  isGuardActive,
   isDead,
   triggerTrap,
-  tryUsePotion,
 } from '../interactions/SurvivalRules'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
 import {
@@ -65,6 +69,7 @@ import {
   findNearbyInteractable,
 } from '../world/WorldBuilder'
 import { generateFloorState } from '../world/FloorFlow'
+import { TEST_BELT_ITEM_DEFINITION_IDS, TEST_SHAPE_ITEM_DEFINITION_IDS } from '../items/ItemCatalog'
 
 const POOL_SIZE = 1000
 const PLAYER_RADIUS = 0.24
@@ -75,7 +80,10 @@ const INTERACTION_RANGE = 1.1
 const PROGRESS_STORAGE_KEY = 'game-devcode-kr/progress'
 const INVENTORY_COLS = 6
 const INVENTORY_ROWS = 8
+const BELT_COLS = 5
+const BELT_ROWS = 1
 const DEFAULT_MAX_HEALTH = 100
+const DEFAULT_MAX_MANA = 60
 const DEBUG_DAMAGE_AMOUNT = 25
 const TRAP_DAMAGE_AMOUNT = 20
 const TRAP_REARM_MS = 1600
@@ -100,8 +108,13 @@ export class GameScene extends Phaser.Scene {
   private gold = 0
   private health = DEFAULT_MAX_HEALTH
   private maxHealth = DEFAULT_MAX_HEALTH
+  private mana = DEFAULT_MAX_MANA
+  private maxMana = DEFAULT_MAX_MANA
+  private poisoned = false
+  private guardBuffUntil = 0
   private spawnTile = { x: 0, y: 0 }
   private inventory: InventoryState = createEmptyInventory(INVENTORY_COLS, INVENTORY_ROWS)
+  private beltInventory: InventoryState = createEmptyInventory(BELT_COLS, BELT_ROWS)
   private activeDialogue: ActiveDialogue | null = null
   private journeyLog: JourneyLog = {
     currentChapter: 'Entered the dungeon',
@@ -131,6 +144,7 @@ export class GameScene extends Phaser.Scene {
   private debugDamageKey!: Phaser.Input.Keyboard.Key
   private respawnKey!: Phaser.Input.Keyboard.Key
   private inventoryKey!: Phaser.Input.Keyboard.Key
+  private inventoryTestItemsKey!: Phaser.Input.Keyboard.Key
 
   constructor() {
     super({ key: 'GameScene' })
@@ -180,11 +194,29 @@ export class GameScene extends Phaser.Scene {
     this.debugDamageKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.H)
     this.respawnKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R)
     this.inventoryKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I)
+    this.inventoryTestItemsKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T)
 
     this.loadProgress()
     this.generateFloor(true)
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.inventoryPanel.isOpen()) {
+        const inventoryClick = this.inventoryPanel.handlePointerDown(
+          pointer.x,
+          pointer.y,
+          pointer.button,
+          this.scale.width,
+          this.inventory,
+          this.beltInventory
+        )
+        if (inventoryClick.requestedUseItemDefinitionId) {
+          this.useInventoryItem(inventoryClick.requestedUseItemDefinitionId)
+        }
+        if (inventoryClick.consumed) {
+          return
+        }
+      }
+
       if (this.activeDialogue) {
         return
       }
@@ -214,6 +246,50 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.applyPathToTile(targetCell, 'path ready')
+    })
+
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (!this.inventoryPanel.isOpen()) {
+        return
+      }
+
+      const inventoryClick = this.inventoryPanel.handlePointerUp(
+        pointer.x,
+        pointer.y,
+        this.scale.width,
+        this.inventory,
+        this.beltInventory
+      )
+      if (!inventoryClick.requestedMove) {
+        return
+      }
+
+      const sourceInventory = inventoryClick.requestedMove.sourceInventoryKind === 'belt'
+        ? this.beltInventory
+        : this.inventory
+      const targetInventory = inventoryClick.requestedMove.targetInventoryKind === 'belt'
+        ? this.beltInventory
+        : this.inventory
+      const moved = sourceInventory === targetInventory
+        ? moveInventoryStack(
+            targetInventory,
+            inventoryClick.requestedMove.stackId,
+            inventoryClick.requestedMove.x,
+            inventoryClick.requestedMove.y
+          )
+        : transferInventoryStack(
+            sourceInventory,
+            targetInventory,
+            inventoryClick.requestedMove.stackId,
+            inventoryClick.requestedMove.x,
+            inventoryClick.requestedMove.y
+          )
+      this.interactionStatus = moved
+        ? `${inventoryClick.requestedMove.sourceInventoryKind} -> ${inventoryClick.requestedMove.targetInventoryKind} ${inventoryClick.requestedMove.x},${inventoryClick.requestedMove.y}`
+        : 'cannot move item there'
+      if (moved) {
+        this.saveProgress()
+      }
     })
 
     this.drawDungeon(false)
@@ -246,6 +322,7 @@ export class GameScene extends Phaser.Scene {
     this.player.commitMapPosition(nextX, nextY)
     this.refreshVisibility()
     this.tryToggleInventory()
+    this.tryAddInventoryTestItems()
     this.tryRespawn()
     this.tryTriggerTrap()
     this.tryApplyDebugDamage()
@@ -348,7 +425,10 @@ export class GameScene extends Phaser.Scene {
 
     this.player.syncScreenPosition(width / 2, height / 2 - 18, isMoving || this.player.hasDestination(), this.game.loop.delta)
     this.dialoguePanel.render(width, height, getDialoguePanelState(this.activeDialogue))
-    this.inventoryPanel.render(width, this.inventory)
+    this.inventoryPanel.render(width, this.inventory, this.beltInventory, {
+      x: this.input.activePointer.x,
+      y: this.input.activePointer.y,
+    })
 
     const destination = this.player.getDestination()
     const finalDestination = this.player.getFinalDestination()
@@ -362,6 +442,7 @@ export class GameScene extends Phaser.Scene {
       'H: debug damage',
       'R: respawn',
       'I: inventory',
+      'T: add test shapes',
       `floor: ${this.floorIndex}`,
       `mode: ${this.player.getMovementMode()}`,
       `animation: ${this.player.getAnimationState()}`,
@@ -375,6 +456,9 @@ export class GameScene extends Phaser.Scene {
       `path status: ${this.pathStatus}`,
       `interaction: ${this.interactionStatus}`,
       `health: ${this.health}/${this.maxHealth}`,
+      `mana: ${this.mana}/${this.maxMana}`,
+      `poisoned: ${this.poisoned ? 'yes' : 'no'}`,
+      `guard: ${this.getGuardStatusText()}`,
       `life state: ${this.isDead() ? 'dead' : 'alive'}`,
       `gold: ${this.gold}  potions: ${this.getItemCount('potion_minor')}  keys: ${this.getItemCount('utility_key')}`,
       `inventory: ${inventorySummary}`,
@@ -635,11 +719,14 @@ export class GameScene extends Phaser.Scene {
 
       const result = openChest({
         interactable,
-        inventory: this.inventory,
+        inventories: [this.beltInventory, this.inventory],
         journeyLog: this.journeyLog,
         achievements: this.achievements,
         consumeKey: () => {
-          removeSingleItemByDefinition(this.inventory, 'utility_key')
+          const removedFromBelt = removeSingleItemByDefinition(this.beltInventory, 'utility_key')
+          if (!removedFromBelt) {
+            removeSingleItemByDefinition(this.inventory, 'utility_key')
+          }
         },
       })
       this.gold += result.goldDelta
@@ -662,18 +749,7 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    const result = tryUsePotion({
-      inventory: this.inventory,
-      health: this.health,
-      maxHealth: this.maxHealth,
-    })
-    this.health = result.health
-    this.interactionStatus = result.status
-    if (!result.used) {
-      return
-    }
-
-    this.saveProgress()
+    this.useInventoryItem('potion_minor')
   }
 
   private tryTriggerTrap(): void {
@@ -686,12 +762,15 @@ export class GameScene extends Phaser.Scene {
       trapRearmMs: TRAP_REARM_MS,
       trapDamageAmount: TRAP_DAMAGE_AMOUNT,
       health: this.health,
+      poisoned: this.poisoned,
+      guardActive: isGuardActive(this.guardBuffUntil, this.time.now),
     })
     if (!result.triggered) {
       return
     }
 
     this.health = result.health
+    this.poisoned = result.poisoned
     this.interactionStatus = result.status
     this.saveProgress()
   }
@@ -727,6 +806,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.inventoryPanel.toggle()
+  }
+
+  private tryAddInventoryTestItems(): void {
+    if (!Phaser.Input.Keyboard.JustDown(this.inventoryTestItemsKey)) {
+      return
+    }
+
+    const result = addInventoryItems(this.inventory, TEST_SHAPE_ITEM_DEFINITION_IDS)
+    const beltResult = addInventoryItems(this.beltInventory, TEST_BELT_ITEM_DEFINITION_IDS)
+    this.interactionStatus =
+      `added shapes ${result.addedCount}, belt consumables ${beltResult.addedCount}` +
+      ((result.failedItemDefinitionIds.length + beltResult.failedItemDefinitionIds.length) > 0
+        ? `, failed ${result.failedItemDefinitionIds.length + beltResult.failedItemDefinitionIds.length}`
+        : '')
+    if (result.addedCount > 0 || beltResult.addedCount > 0) {
+      this.saveProgress()
+    }
   }
 
   private getNearbyInteractable(): Interactable | null {
@@ -778,7 +874,12 @@ export class GameScene extends Phaser.Scene {
       gold: this.gold,
       health: this.health,
       maxHealth: this.maxHealth,
+      mana: this.mana,
+      maxMana: this.maxMana,
+      poisoned: this.poisoned,
+      guardBuffRemainingMs: Math.max(0, this.guardBuffUntil - this.time.now),
       inventory: this.inventory,
+      beltInventory: this.beltInventory,
       journeyLog: this.journeyLog,
       achievements: this.achievements,
     })
@@ -787,25 +888,36 @@ export class GameScene extends Phaser.Scene {
   private applyProgressSnapshot(snapshot: ProgressSnapshot): void {
     const loaded = applyStoredProgressSnapshot(snapshot, {
       defaultHealth: DEFAULT_MAX_HEALTH,
+      defaultMana: DEFAULT_MAX_MANA,
       inventoryCols: INVENTORY_COLS,
       inventoryRows: INVENTORY_ROWS,
+      beltCols: BELT_COLS,
+      beltRows: BELT_ROWS,
     })
 
     this.floorIndex = loaded.runtime.floorIndex
     this.gold = loaded.runtime.gold
     this.health = loaded.runtime.health
     this.maxHealth = loaded.runtime.maxHealth
+    this.mana = loaded.runtime.mana
+    this.maxMana = loaded.runtime.maxMana
+    this.poisoned = loaded.runtime.poisoned
+    this.guardBuffUntil = this.time.now + loaded.runtime.guardBuffRemainingMs
     this.inventory = loaded.runtime.inventory
+    this.beltInventory = loaded.runtime.beltInventory
     this.journeyLog = loaded.journeyLog
     this.achievements = loaded.achievements
   }
 
   private getItemCount(itemDefinitionId: string): number {
-    return getInventoryItemCount(this.inventory, itemDefinitionId)
+    return getItemCountAcrossInventories([this.beltInventory, this.inventory], itemDefinitionId)
   }
 
   private getInventorySummaryText(): string {
-    return getInventorySummaryText(this.inventory)
+    return [
+      `belt: ${getInventorySummaryText(this.beltInventory)}`,
+      `bag: ${getInventorySummaryText(this.inventory)}`,
+    ].join(' | ')
   }
 
   private isDead(): boolean {
@@ -818,5 +930,55 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.interactionStatus = `achievement unlocked: ${labels.join(', ')}`
+  }
+
+  private useInventoryItem(itemDefinitionId: string): void {
+    const beltResult = applyInventoryItemUse({
+      inventory: this.beltInventory,
+      itemDefinitionId,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      mana: this.mana,
+      maxMana: this.maxMana,
+      poisoned: this.poisoned,
+    })
+    if (beltResult.used) {
+      this.health = beltResult.health
+      this.mana = beltResult.mana
+      this.poisoned = beltResult.poisoned
+      this.guardBuffUntil = Math.max(this.guardBuffUntil, this.time.now + beltResult.guardDurationMs)
+      this.interactionStatus = beltResult.status
+      this.saveProgress()
+      return
+    }
+
+    const result = applyInventoryItemUse({
+      inventory: this.inventory,
+      itemDefinitionId,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      mana: this.mana,
+      maxMana: this.maxMana,
+      poisoned: this.poisoned,
+    })
+    this.health = result.health
+    this.mana = result.mana
+    this.poisoned = result.poisoned
+    this.guardBuffUntil = Math.max(this.guardBuffUntil, this.time.now + result.guardDurationMs)
+    this.interactionStatus = result.status
+    if (!result.used) {
+      return
+    }
+
+    this.saveProgress()
+  }
+
+  private getGuardStatusText(): string {
+    const remainingMs = Math.max(0, this.guardBuffUntil - this.time.now)
+    if (remainingMs <= 0) {
+      return 'off'
+    }
+
+    return `${(remainingMs / 1000).toFixed(1)}s`
   }
 }

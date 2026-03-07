@@ -5,6 +5,7 @@ import {
   getInventoryStackViews,
   type InventoryState,
 } from './Inventory'
+import { getItemDefinition } from './ItemCatalog'
 
 export function addInventoryItemBatch(
   inventory: InventoryState,
@@ -23,6 +24,72 @@ export function addInventoryItemBatch(
   }
 
   return addedCount
+}
+
+export function addInventoryItems(
+  inventory: InventoryState,
+  itemDefinitionIds: readonly string[]
+): { addedCount: number; failedItemDefinitionIds: string[] } {
+  let addedCount = 0
+  const failedItemDefinitionIds: string[] = []
+
+  for (const itemDefinitionId of itemDefinitionIds) {
+    const added = addItemInstance(inventory, createItemInstance(itemDefinitionId))
+    if (!added) {
+      failedItemDefinitionIds.push(itemDefinitionId)
+      continue
+    }
+
+    addedCount += 1
+  }
+
+  return {
+    addedCount,
+    failedItemDefinitionIds,
+  }
+}
+
+export function addItemToInventories(
+  itemDefinitionId: string,
+  inventories: InventoryState[]
+): boolean {
+  for (const inventory of inventories) {
+    if (addItemInstance(inventory, createItemInstance(itemDefinitionId))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export function addInventoryItemBatchToInventories(
+  itemDefinitionId: string,
+  amount: number,
+  inventories: InventoryState[]
+): number {
+  const definition = getItemDefinition(itemDefinitionId)
+  const orderedInventories = definition.type === 'consumable'
+    ? inventories
+    : [...inventories].reverse()
+  let addedCount = 0
+
+  for (let index = 0; index < amount; index++) {
+    const added = addItemToInventories(itemDefinitionId, orderedInventories)
+    if (!added) {
+      break
+    }
+
+    addedCount += 1
+  }
+
+  return addedCount
+}
+
+export function getItemCountAcrossInventories(
+  inventories: InventoryState[],
+  itemDefinitionId: string
+): number {
+  return inventories.reduce((sum, inventory) => sum + countItemsByDefinition(inventory, itemDefinitionId), 0)
 }
 
 export function getInventoryItemCount(inventory: InventoryState, itemDefinitionId: string): number {
