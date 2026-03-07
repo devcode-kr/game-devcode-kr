@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser'
+import type { CharacterStatModifier } from '../characters/CharacterStatRules'
 import { getItemDefinition } from '../items/ItemCatalog'
 import {
   canTransferInventoryStack,
@@ -322,6 +323,11 @@ export class InventoryPanel {
       `size: ${definition.width}x${definition.height}`,
       `stack: ${selectedStack.stack.count}/${selectedStack.stack.maxStack}`,
       ...(definition.healAmount ? [`effect: heal ${definition.healAmount}`] : []),
+      ...(definition.manaAmount ? [`effect: mana ${definition.manaAmount}`] : []),
+      ...(definition.guardDurationMs ? [`effect: guard ${Math.floor(definition.guardDurationMs / 1000)}s`] : []),
+      ...this.getStatModifierLines(definition.statModifiers),
+      ...(definition.statBuffDurationMs ? [`buff duration: ${Math.floor(definition.statBuffDurationMs / 1000)}s`] : []),
+      ...(definition.cooldownMs ? [`cooldown: ${Math.floor(definition.cooldownMs / 1000)}s (${definition.cooldownGroup ?? 'shared'})`] : []),
       '',
       'actions:',
       '- drag to move',
@@ -575,10 +581,30 @@ export class InventoryPanel {
       return 0x7c3aed
     }
 
+    if (itemDefinitionId === 'potion_berserk') {
+      return 0xdc2626
+    }
+
+    if (itemDefinitionId === 'potion_haste') {
+      return 0x0891b2
+    }
+
     if (itemDefinitionId === 'utility_key') {
       return 0xa16207
     }
 
     return 0x475569
+  }
+
+  private getStatModifierLines(modifier: CharacterStatModifier | undefined): string[] {
+    if (!modifier) {
+      return []
+    }
+
+    const parts = Object.entries(modifier)
+      .filter(([, value]) => value !== undefined && value !== 0)
+      .map(([key, value]) => `${key} ${Number(value) > 0 ? '+' : ''}${Number(value)}`)
+
+    return parts.length > 0 ? [`stats: ${parts.join(', ')}`] : []
   }
 }

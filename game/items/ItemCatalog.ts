@@ -1,4 +1,18 @@
 export type ItemType = 'consumable' | 'utility' | 'equipment' | 'quest'
+import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+
+export type ItemCooldownGroup =
+  | 'health_recovery'
+  | 'mana_recovery'
+  | 'antidote'
+  | 'attack_boost'
+  | 'attack_speed_boost'
+  | 'defense_boost'
+
+const RECOVERY_POTION_EFFECT_DURATION_MS = 12000
+const DEFENSE_POTION_EFFECT_DURATION_MS = 18000
+const ATTACK_POTION_EFFECT_DURATION_MS = 18000
+const ATTACK_SPEED_POTION_EFFECT_DURATION_MS = 15000
 
 export interface ItemDefinition {
   id: string
@@ -13,6 +27,10 @@ export interface ItemDefinition {
   manaAmount?: number
   curesPoison?: boolean
   guardDurationMs?: number
+  statModifiers?: CharacterStatModifier
+  statBuffDurationMs?: number
+  cooldownGroup?: ItemCooldownGroup
+  cooldownMs?: number
 }
 
 export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
@@ -27,7 +45,12 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: true,
     maxStack: 8,
-    healAmount: 35,
+    statModifiers: {
+      healthRegen: 2.5,
+    },
+    statBuffDurationMs: RECOVERY_POTION_EFFECT_DURATION_MS,
+    cooldownGroup: 'health_recovery',
+    cooldownMs: 12000,
   },
   potion_guard: {
     id: 'potion_guard',
@@ -41,7 +64,14 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: true,
     maxStack: 4,
-    guardDurationMs: 30000,
+    guardDurationMs: DEFENSE_POTION_EFFECT_DURATION_MS,
+    statModifiers: {
+      defense: 8,
+      fullDefenseChance: 0.18,
+    },
+    statBuffDurationMs: DEFENSE_POTION_EFFECT_DURATION_MS,
+    cooldownGroup: 'defense_boost',
+    cooldownMs: 18000,
   },
   potion_mana: {
     id: 'potion_mana',
@@ -54,7 +84,12 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: true,
     maxStack: 8,
-    manaAmount: 30,
+    statModifiers: {
+      manaRegen: 3.5,
+    },
+    statBuffDurationMs: RECOVERY_POTION_EFFECT_DURATION_MS,
+    cooldownGroup: 'mana_recovery',
+    cooldownMs: 12000,
   },
   potion_antidote: {
     id: 'potion_antidote',
@@ -68,6 +103,51 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     stackable: true,
     maxStack: 8,
     curesPoison: true,
+    cooldownGroup: 'antidote',
+    cooldownMs: 8000,
+  },
+  potion_berserk: {
+    id: 'potion_berserk',
+    type: 'consumable',
+    name: 'Berserk Potion',
+    width: 1,
+    height: 2,
+    footprint: [
+      [1],
+      [1],
+    ],
+    stackable: true,
+    maxStack: 4,
+    statModifiers: {
+      meleeAttack: 6,
+      rangedAttack: 6,
+      meleeMagicAttack: 3,
+      rangedMagicAttack: 3,
+    },
+    statBuffDurationMs: ATTACK_POTION_EFFECT_DURATION_MS,
+    cooldownGroup: 'attack_boost',
+    cooldownMs: 16000,
+  },
+  potion_haste: {
+    id: 'potion_haste',
+    type: 'consumable',
+    name: 'Haste Potion',
+    width: 1,
+    height: 2,
+    footprint: [
+      [1],
+      [1],
+    ],
+    stackable: true,
+    maxStack: 4,
+    statModifiers: {
+      attackSpeed: 0.22,
+      magicAttackSpeed: 0.22,
+      moveSpeed: 0.08,
+    },
+    statBuffDurationMs: ATTACK_SPEED_POTION_EFFECT_DURATION_MS,
+    cooldownGroup: 'attack_speed_boost',
+    cooldownMs: 16000,
   },
   utility_key: {
     id: 'utility_key',
@@ -94,6 +174,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      maxHealth: 12,
+      defense: 2,
+    },
   },
   test_shape_nieun: {
     id: 'test_shape_nieun',
@@ -108,6 +192,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      meleeAttack: 4,
+      attackSpeed: 0.05,
+    },
   },
   test_shape_a: {
     id: 'test_shape_a',
@@ -122,6 +210,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      manaRegen: 0.8,
+      meleeMagicAttack: 3,
+    },
   },
   test_shape_eo: {
     id: 'test_shape_eo',
@@ -136,6 +228,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      rangedMagicAttack: 4,
+      maxMana: 10,
+    },
   },
   test_shape_ring_cross: {
     id: 'test_shape_ring_cross',
@@ -150,6 +246,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      fullDefenseChance: 0.04,
+      defense: 1,
+    },
   },
   test_shape_plateau_l: {
     id: 'test_shape_plateau_l',
@@ -164,6 +264,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      healthRegen: 0.8,
+      maxHealth: 8,
+    },
   },
   test_shape_block_hook: {
     id: 'test_shape_block_hook',
@@ -178,6 +282,11 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      meleeAttack: 2,
+      rangedAttack: 2,
+      moveSpeed: 0.04,
+    },
   },
   test_shape_standard_hook: {
     id: 'test_shape_standard_hook',
@@ -192,6 +301,10 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     ],
     stackable: false,
     maxStack: 1,
+    statModifiers: {
+      rangedAttack: 5,
+      moveSpeed: 0.08,
+    },
   },
 } as const
 
@@ -208,10 +321,11 @@ export const TEST_SHAPE_ITEM_DEFINITION_IDS = [
 
 export const TEST_BELT_ITEM_DEFINITION_IDS = [
   'potion_minor',
-  'potion_minor',
   'potion_mana',
   'potion_antidote',
   'potion_guard',
+  'potion_berserk',
+  'potion_haste',
 ] as const
 
 export function getItemDefinition(itemDefinitionId: string): ItemDefinition {
