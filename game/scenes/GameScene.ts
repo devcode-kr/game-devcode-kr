@@ -334,6 +334,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.commitMapPosition(nextX, nextY)
+    this.playerCharacter.applyRegeneration(delta)
     this.refreshActiveItemBuffs()
     this.refreshItemCooldowns()
     this.refreshVisibility()
