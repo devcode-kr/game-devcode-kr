@@ -80,6 +80,20 @@ export class MovementController {
     return (this.destination ? 1 : 0) + this.pathQueue.length
   }
 
+  getPathPoints(): Phaser.Math.Vector2[] {
+    const points: Phaser.Math.Vector2[] = []
+
+    if (this.destination) {
+      points.push(this.destination.clone())
+    }
+
+    for (const point of this.pathQueue) {
+      points.push(point.clone())
+    }
+
+    return points
+  }
+
   step(deltaMs: number, manualDirection: Phaser.Math.Vector2): MovementSnapshot {
     this.velocity.set(0, 0)
 

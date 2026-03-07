@@ -107,6 +107,10 @@ export class Player extends Phaser.GameObjects.Container {
     return this.controller.getPathLength()
   }
 
+  getPathPoints(): Phaser.Math.Vector2[] {
+    return this.controller.getPathPoints()
+  }
+
   getAnimationState(): AnimationState {
     return this.animationState
   }

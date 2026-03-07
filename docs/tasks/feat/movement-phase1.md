@@ -316,3 +316,8 @@ node scripts/generate-character-sheet.mjs
 - Diagonal movement is allowed, but corner cutting through blocked tiles is prevented.
 - Click movement now computes a tile path and feeds waypoint centers into `MovementController` instead of moving in a straight line.
 - HUD now shows remaining `path length`.
+
+## Path visualization
+- Added a debug path overlay using `Phaser.GameObjects.Graphics`.
+- The path draws from the player position through each remaining waypoint.
+- Intermediate nodes render as light markers, and the final destination renders as an orange marker.
