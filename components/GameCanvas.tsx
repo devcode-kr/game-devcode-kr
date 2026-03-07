@@ -7,7 +7,6 @@ export default function GameCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<Phaser.Game | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
-  const resizeHandlerRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return
@@ -30,15 +29,9 @@ export default function GameCanvas() {
       })
 
       resizeObserverRef.current.observe(containerRef.current)
-      resizeHandlerRef.current = resizeGame
-      window.visualViewport?.addEventListener('resize', resizeGame)
     })
 
     return () => {
-      if (resizeHandlerRef.current) {
-        window.visualViewport?.removeEventListener('resize', resizeHandlerRef.current)
-        resizeHandlerRef.current = null
-      }
       resizeObserverRef.current?.disconnect()
       resizeObserverRef.current = null
       gameRef.current?.destroy(true)
