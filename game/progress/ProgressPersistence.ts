@@ -11,7 +11,12 @@ export interface RuntimeProgressState {
   gold: number
   health: number
   maxHealth: number
+  mana: number
+  maxMana: number
+  poisoned: boolean
+  guardBuffRemainingMs: number
   inventory: InventoryState
+  beltInventory: InventoryState
 }
 
 export function createProgressSnapshot(params: {
@@ -19,7 +24,12 @@ export function createProgressSnapshot(params: {
   gold: number
   health: number
   maxHealth: number
+  mana: number
+  maxMana: number
+  poisoned: boolean
+  guardBuffRemainingMs: number
   inventory: InventoryState
+  beltInventory: InventoryState
   journeyLog: ProgressSnapshot['journeyLog']
   achievements: ProgressSnapshot['achievements']
 }): ProgressSnapshot {
@@ -28,7 +38,12 @@ export function createProgressSnapshot(params: {
     gold: params.gold,
     health: params.health,
     maxHealth: params.maxHealth,
+    mana: params.mana,
+    maxMana: params.maxMana,
+    poisoned: params.poisoned,
+    guardBuffRemainingMs: params.guardBuffRemainingMs,
     inventory: params.inventory,
+    beltInventory: params.beltInventory,
     journeyLog: params.journeyLog,
     achievements: params.achievements,
   }
@@ -38,8 +53,11 @@ export function applyProgressSnapshot(
   snapshot: ProgressSnapshot,
   defaults: {
     defaultHealth: number
+    defaultMana: number
     inventoryCols: number
     inventoryRows: number
+    beltCols: number
+    beltRows: number
   }
 ): {
   runtime: RuntimeProgressState
@@ -52,7 +70,12 @@ export function applyProgressSnapshot(
       gold: snapshot.gold,
       health: snapshot.health ?? defaults.defaultHealth,
       maxHealth: snapshot.maxHealth ?? defaults.defaultHealth,
+      mana: snapshot.mana ?? defaults.defaultMana,
+      maxMana: snapshot.maxMana ?? defaults.defaultMana,
+      poisoned: snapshot.poisoned ?? false,
+      guardBuffRemainingMs: snapshot.guardBuffRemainingMs ?? 0,
       inventory: snapshot.inventory ?? createInventoryFromLegacySnapshot(snapshot, defaults.inventoryCols, defaults.inventoryRows),
+      beltInventory: snapshot.beltInventory ?? createEmptyInventory(defaults.beltCols, defaults.beltRows),
     },
     journeyLog: snapshot.journeyLog,
     achievements: snapshot.achievements,

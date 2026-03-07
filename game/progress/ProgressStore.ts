@@ -27,9 +27,14 @@ export interface ProgressSnapshot {
   gold: number
   health?: number
   maxHealth?: number
+  mana?: number
+  maxMana?: number
+  poisoned?: boolean
+  guardBuffRemainingMs?: number
   potions?: number
   keys?: number
   inventory?: InventoryState
+  beltInventory?: InventoryState
   journeyLog: JourneyLog
   achievements: AchievementState
 }
