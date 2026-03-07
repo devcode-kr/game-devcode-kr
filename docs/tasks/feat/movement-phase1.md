@@ -329,6 +329,6 @@ node scripts/generate-character-sheet.mjs
 - The app root now uses `100dvh` and removes the old `minHeight: 600px` constraint.
 
 ## Browser zoom viewport fix
-- Added `getGameViewportSize(parent)` to derive the Phaser viewport from CSS size multiplied by `visualViewport.scale`.
-- Browser zoom changes now adjust the CSS viewport but no longer shrink the in-game world range.
-- Actual browser window resizes still update the visible world area.
+- Changed viewport sizing to keep the internal render height fixed at `600` and derive render width from the container's current aspect ratio.
+- Browser zoom no longer changes the in-game world range because resize calculations now depend on aspect ratio, not zoom-scaled viewport pixels.
+- Actual browser window resizes still change the visible world area by changing the aspect ratio.

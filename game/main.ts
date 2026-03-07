@@ -2,20 +2,16 @@ import * as Phaser from 'phaser'
 import { PreloadScene } from './scenes/PreloadScene'
 import { GameScene } from './scenes/GameScene'
 
-function getViewportScale(): number {
-  if (typeof window === 'undefined') {
-    return 1
-  }
-
-  return window.visualViewport?.scale ?? 1
-}
+const BASE_RENDER_HEIGHT = 600
 
 export function getGameViewportSize(parent: HTMLElement): { width: number; height: number } {
-  const scale = getViewportScale()
+  const width = Math.max(parent.clientWidth, 1)
+  const height = Math.max(parent.clientHeight, 1)
+  const aspectRatio = width / height
 
   return {
-    width: Math.max(Math.round(parent.clientWidth * scale), 1),
-    height: Math.max(Math.round(parent.clientHeight * scale), 1),
+    width: Math.max(Math.round(BASE_RENDER_HEIGHT * aspectRatio), 1),
+    height: BASE_RENDER_HEIGHT,
   }
 }
 
