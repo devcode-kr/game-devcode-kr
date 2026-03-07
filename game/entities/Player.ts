@@ -11,12 +11,14 @@ const IDLE_BOB_HEIGHT = 1.5
 const RUN_BOB_HEIGHT = 4
 
 const SHEET_TEXTURE_KEY = 'player-test-sheet'
-const FRAME_WIDTH = 64
-const FRAME_HEIGHT = 128
+const DIRECTION_COUNT = 8
 const IDLE_FRAME_COUNT = 2
 const IDLE_FRAME_DURATION_MS = 420
 const RUN_FRAME_COUNT = 3
 const RUN_FRAME_DURATION_MS = 90
+const PLAYER_SCALE = 1.25
+const PLAYER_RUN_SCALE_Y = 1.21
+const PLAYER_BASE_Y = -18
 
 type FacingDirection =
   | 'north'
@@ -44,7 +46,7 @@ export class Player extends Phaser.GameObjects.Container {
   private readonly animation = new AnimationStateMachine()
   private readonly shadow: Phaser.GameObjects.Ellipse
   private readonly selectionRing: Phaser.GameObjects.Ellipse
-  private readonly sprite: Phaser.GameObjects.Image
+  private readonly sprite: Phaser.GameObjects.Sprite
   private animationState: AnimationState = 'idle'
   private facingDirection: FacingDirection = 'south'
 
@@ -55,10 +57,10 @@ export class Player extends Phaser.GameObjects.Container {
     this.selectionRing = scene.add.ellipse(0, 10, 24, 12)
     this.selectionRing.setStrokeStyle(2, 0xe6d28a, 0.9)
 
-    this.sprite = scene.add.image(0, -18, SHEET_TEXTURE_KEY)
+    this.sprite = scene.add.sprite(0, PLAYER_BASE_Y, SHEET_TEXTURE_KEY, 0)
     this.sprite.setOrigin(0.5, 0.96)
-    this.sprite.setScale(1.25)
-    this.applyFrameCrop()
+    this.sprite.setScale(PLAYER_SCALE)
+    this.applyFrame()
 
     this.add([this.shadow, this.selectionRing, this.sprite])
     this.setDepth(9999)
@@ -130,24 +132,18 @@ export class Player extends Phaser.GameObjects.Container {
       ? Math.sin(this.animation.getElapsed() * 0.025) * 0.03
       : 0
 
-    this.applyFrameCrop()
-    this.sprite.setScale(1.25, this.animationState === 'run' ? 1.21 : 1.25)
+    this.applyFrame()
+    this.sprite.setScale(PLAYER_SCALE, this.animationState === 'run' ? PLAYER_RUN_SCALE_Y : PLAYER_SCALE)
     this.sprite.setRotation(runSwing)
-    this.sprite.setY(-18 - bob * 0.15)
+    this.sprite.setY(PLAYER_BASE_Y - bob * 0.15)
   }
 
-  private applyFrameCrop(): void {
+  private applyFrame(): void {
     const column = DIRECTION_TO_COLUMN[this.facingDirection]
     const row = this.animationState === 'run'
       ? 2 + (Math.floor(this.animation.getElapsed() / RUN_FRAME_DURATION_MS) % RUN_FRAME_COUNT)
       : Math.floor(this.animation.getElapsed() / IDLE_FRAME_DURATION_MS) % IDLE_FRAME_COUNT
-
-    this.sprite.setCrop(
-      column * FRAME_WIDTH,
-      row * FRAME_HEIGHT,
-      FRAME_WIDTH,
-      FRAME_HEIGHT
-    )
+    this.sprite.setFrame(row * DIRECTION_COUNT + column)
   }
 
   private resolveFacingDirection(facing: Phaser.Math.Vector2): FacingDirection {
