@@ -10,6 +10,7 @@ import {
   resolveCharacterStats,
   type CharacterStatModifier,
 } from './CharacterStatRules'
+import { tickRegeneration } from './CharacterRegenRules'
 
 export interface CharacterRuntimeSnapshot {
   jobId: CharacterJobId
@@ -42,6 +43,8 @@ export abstract class CharacterUnit {
   private mana: number
   private poisoned: boolean
   private guardBuffUntil = 0
+  private healthRegenRemainder = 0
+  private manaRegenRemainder = 0
 
   protected constructor(config: CharacterUnitConfig) {
     this.id = config.id
@@ -175,6 +178,32 @@ export abstract class CharacterUnit {
 
   setPoisoned(poisoned: boolean): void {
     this.poisoned = poisoned
+  }
+
+  applyRegeneration(deltaMs: number): void {
+    if (this.isDead()) {
+      return
+    }
+
+    const healthTick = tickRegeneration({
+      currentValue: this.health,
+      maxValue: this.getMaxHealth(),
+      regenPerSecond: this.poisoned ? 0 : this.getHealthRegen(),
+      deltaMs,
+      remainder: this.healthRegenRemainder,
+    })
+    this.health = healthTick.nextValue
+    this.healthRegenRemainder = healthTick.remainder
+
+    const manaTick = tickRegeneration({
+      currentValue: this.mana,
+      maxValue: this.getMaxMana(),
+      regenPerSecond: this.getManaRegen(),
+      deltaMs,
+      remainder: this.manaRegenRemainder,
+    })
+    this.mana = manaTick.nextValue
+    this.manaRegenRemainder = manaTick.remainder
   }
 
   private reconcileResourceCaps(): void {
