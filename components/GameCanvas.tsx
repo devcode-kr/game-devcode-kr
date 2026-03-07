@@ -11,7 +11,7 @@ export default function GameCanvas() {
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return
 
-    import('../game/main').then(({ createGame, getGameViewportSize }) => {
+    import('../game/main').then(({ applyGameDisplaySize, createGame, getGameViewportSize }) => {
       if (!containerRef.current) return
       gameRef.current = createGame(containerRef.current)
 
@@ -22,6 +22,7 @@ export default function GameCanvas() {
 
         const { width, height } = getGameViewportSize(container)
         game.scale.resize(width, height)
+        applyGameDisplaySize(game)
       }
 
       resizeObserverRef.current = new ResizeObserver(() => {
@@ -29,6 +30,7 @@ export default function GameCanvas() {
       })
 
       resizeObserverRef.current.observe(containerRef.current)
+      resizeGame()
     })
 
     return () => {
