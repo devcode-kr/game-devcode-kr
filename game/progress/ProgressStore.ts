@@ -1,4 +1,7 @@
 import type { InventoryState } from '../items/Inventory'
+import type { CharacterJobId } from '../characters/CharacterJobRules'
+import type { ActiveItemBuffSnapshot } from '../items/ItemStatRules'
+import type { ItemCooldownSnapshot } from '../items/ItemCooldownRules'
 
 export interface JourneyLog {
   currentChapter: string
@@ -25,12 +28,15 @@ export interface AchievementState {
 export interface ProgressSnapshot {
   floorIndex: number
   gold: number
+  jobId?: CharacterJobId
   health?: number
   maxHealth?: number
   mana?: number
   maxMana?: number
   poisoned?: boolean
   guardBuffRemainingMs?: number
+  activeItemBuffs?: ActiveItemBuffSnapshot[]
+  itemCooldowns?: ItemCooldownSnapshot[]
   potions?: number
   keys?: number
   inventory?: InventoryState

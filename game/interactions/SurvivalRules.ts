@@ -1,5 +1,6 @@
 import { cellCenter } from '../iso'
-import { getItemDefinition } from '../items/ItemCatalog'
+import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+import { getItemDefinition, type ItemCooldownGroup } from '../items/ItemCatalog'
 import { removeSingleItemByDefinition, type InventoryState } from '../items/Inventory'
 import type { Trap } from '../world/WorldObjects'
 
@@ -32,6 +33,11 @@ export interface InventoryItemUseResult {
   mana: number
   poisoned: boolean
   guardDurationMs: number
+  statModifiers?: CharacterStatModifier
+  statBuffDurationMs: number
+  statBuffItemDefinitionId?: string
+  cooldownGroup?: ItemCooldownGroup
+  cooldownMs: number
   status: string
 }
 
@@ -50,7 +56,8 @@ export function applyInventoryItemUse(params: {
     !definition.healAmount &&
     !definition.manaAmount &&
     !definition.curesPoison &&
-    !definition.guardDurationMs
+    !definition.guardDurationMs &&
+    !definition.statBuffDurationMs
   ) {
     return {
       used: false,
@@ -58,6 +65,8 @@ export function applyInventoryItemUse(params: {
       mana: params.mana,
       poisoned: params.poisoned,
       guardDurationMs: 0,
+      statBuffDurationMs: 0,
+      cooldownMs: 0,
       status: `${definition.name} cannot be used right now`,
     }
   }
@@ -69,6 +78,8 @@ export function applyInventoryItemUse(params: {
       mana: params.mana,
       poisoned: params.poisoned,
       guardDurationMs: 0,
+      statBuffDurationMs: 0,
+      cooldownMs: 0,
       status: 'health already full',
     }
   }
@@ -80,6 +91,8 @@ export function applyInventoryItemUse(params: {
       mana: params.mana,
       poisoned: params.poisoned,
       guardDurationMs: 0,
+      statBuffDurationMs: 0,
+      cooldownMs: 0,
       status: 'mana already full',
     }
   }
@@ -91,6 +104,8 @@ export function applyInventoryItemUse(params: {
       mana: params.mana,
       poisoned: params.poisoned,
       guardDurationMs: 0,
+      statBuffDurationMs: 0,
+      cooldownMs: 0,
       status: 'no poison to cure',
     }
   }
@@ -103,6 +118,8 @@ export function applyInventoryItemUse(params: {
       mana: params.mana,
       poisoned: params.poisoned,
       guardDurationMs: 0,
+      statBuffDurationMs: 0,
+      cooldownMs: 0,
       status: `no ${definition.name} to use`,
     }
   }
@@ -115,11 +132,14 @@ export function applyInventoryItemUse(params: {
   const restoredMana = nextMana - params.mana
   const curedPoison = definition.curesPoison && params.poisoned
   const guardDurationMs = definition.guardDurationMs ?? 0
+  const statBuffDurationMs = definition.statBuffDurationMs ?? 0
+  const cooldownMs = definition.cooldownMs ?? 0
   const effects = [
     healed > 0 ? `+${healed} health` : null,
     restoredMana > 0 ? `+${restoredMana} mana` : null,
     curedPoison ? 'cured poison' : null,
     guardDurationMs > 0 ? `guard ${Math.floor(guardDurationMs / 1000)}s` : null,
+    statBuffDurationMs > 0 && definition.statModifiers ? `buff ${Math.floor(statBuffDurationMs / 1000)}s` : null,
   ].filter(Boolean)
 
   return {
@@ -128,6 +148,11 @@ export function applyInventoryItemUse(params: {
     mana: nextMana,
     poisoned: definition.curesPoison ? false : params.poisoned,
     guardDurationMs,
+    statModifiers: definition.statModifiers,
+    statBuffDurationMs,
+    statBuffItemDefinitionId: statBuffDurationMs > 0 ? definition.id : undefined,
+    cooldownGroup: definition.cooldownGroup,
+    cooldownMs,
     status: `used ${definition.name}: ${effects.join(', ')}`,
   }
 }

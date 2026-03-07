@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
+import { PlayerCharacter } from '../characters/PlayerCharacter'
 import {
   createEmptyInventory,
   moveInventoryStack,
@@ -12,6 +13,23 @@ import {
   getInventorySummaryText,
   getItemCountAcrossInventories,
 } from '../items/InventoryUtils'
+import {
+  getActiveItemBuffStatBonuses,
+  getInventoryEquipmentStatBonuses,
+  restoreActiveItemBuffs,
+  serializeActiveItemBuffs,
+  type ActiveItemBuffRuntime,
+  upsertActiveItemBuff,
+} from '../items/ItemStatRules'
+import {
+  getItemCooldownRemainingMs,
+  isItemCooldownActive,
+  pruneExpiredItemCooldowns,
+  restoreItemCooldowns,
+  serializeItemCooldowns,
+  setItemCooldown,
+  type ItemCooldownRuntime,
+} from '../items/ItemCooldownRules'
 import {
   canOccupy,
   canOccupyCell,
@@ -32,8 +50,6 @@ import {
   applyDebugDamage,
   getRespawnHealth,
   getRespawnPosition,
-  isGuardActive,
-  isDead,
   triggerTrap,
 } from '../interactions/SurvivalRules'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
@@ -70,6 +86,7 @@ import {
 } from '../world/WorldBuilder'
 import { generateFloorState } from '../world/FloorFlow'
 import { TEST_BELT_ITEM_DEFINITION_IDS, TEST_SHAPE_ITEM_DEFINITION_IDS } from '../items/ItemCatalog'
+import { getItemDefinition } from '../items/ItemCatalog'
 
 const POOL_SIZE = 1000
 const PLAYER_RADIUS = 0.24
@@ -82,8 +99,6 @@ const INVENTORY_COLS = 6
 const INVENTORY_ROWS = 8
 const BELT_COLS = 5
 const BELT_ROWS = 1
-const DEFAULT_MAX_HEALTH = 100
-const DEFAULT_MAX_MANA = 60
 const DEBUG_DAMAGE_AMOUNT = 25
 const TRAP_DAMAGE_AMOUNT = 20
 const TRAP_REARM_MS = 1600
@@ -91,6 +106,7 @@ const RESPAWN_HEALTH_RATIO = 0.5
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
+  private readonly playerCharacter = new PlayerCharacter()
   private dungeon!: BSPDungeon
   private tilePool: Phaser.GameObjects.Image[] = []
   private pathGraphics!: Phaser.GameObjects.Graphics
@@ -106,15 +122,11 @@ export class GameScene extends Phaser.Scene {
   private interactionStatus = 'none'
   private floorIndex = 1
   private gold = 0
-  private health = DEFAULT_MAX_HEALTH
-  private maxHealth = DEFAULT_MAX_HEALTH
-  private mana = DEFAULT_MAX_MANA
-  private maxMana = DEFAULT_MAX_MANA
-  private poisoned = false
-  private guardBuffUntil = 0
   private spawnTile = { x: 0, y: 0 }
   private inventory: InventoryState = createEmptyInventory(INVENTORY_COLS, INVENTORY_ROWS)
   private beltInventory: InventoryState = createEmptyInventory(BELT_COLS, BELT_ROWS)
+  private activeItemBuffs: ActiveItemBuffRuntime[] = []
+  private itemCooldowns: ItemCooldownRuntime[] = []
   private activeDialogue: ActiveDialogue | null = null
   private journeyLog: JourneyLog = {
     currentChapter: 'Entered the dungeon',
@@ -197,6 +209,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryTestItemsKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T)
 
     this.loadProgress()
+    this.refreshCharacterStatSources()
     this.generateFloor(true)
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -288,6 +301,7 @@ export class GameScene extends Phaser.Scene {
         ? `${inventoryClick.requestedMove.sourceInventoryKind} -> ${inventoryClick.requestedMove.targetInventoryKind} ${inventoryClick.requestedMove.x},${inventoryClick.requestedMove.y}`
         : 'cannot move item there'
       if (moved) {
+        this.refreshCharacterStatSources()
         this.saveProgress()
       }
     })
@@ -320,6 +334,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.commitMapPosition(nextX, nextY)
+    this.refreshActiveItemBuffs()
+    this.refreshItemCooldowns()
     this.refreshVisibility()
     this.tryToggleInventory()
     this.tryAddInventoryTestItems()
@@ -433,6 +449,8 @@ export class GameScene extends Phaser.Scene {
     const destination = this.player.getDestination()
     const finalDestination = this.player.getFinalDestination()
     const inventorySummary = this.getInventorySummaryText()
+    const activeBuffSummary = this.getActiveBuffSummaryText()
+    const cooldownSummary = this.getItemCooldownSummaryText()
     this.hudText.setText([
       'Movement Phase 1',
       'WASD / Arrows: manual move',
@@ -455,9 +473,18 @@ export class GameScene extends Phaser.Scene {
       `search budget: ${this.getPathSearchBudget()} (${PATH_SEARCH_BUDGET_MULTIPLIER.toFixed(1)}x)`,
       `path status: ${this.pathStatus}`,
       `interaction: ${this.interactionStatus}`,
-      `health: ${this.health}/${this.maxHealth}`,
-      `mana: ${this.mana}/${this.maxMana}`,
-      `poisoned: ${this.poisoned ? 'yes' : 'no'}`,
+      `job: ${this.playerCharacter.getJob().label}`,
+      `health: ${this.playerCharacter.getHealth()}/${this.playerCharacter.getMaxHealth()}`,
+      `mana: ${this.playerCharacter.getMana()}/${this.playerCharacter.getMaxMana()}`,
+      `regen(hp/mp): ${this.playerCharacter.getHealthRegen().toFixed(1)}/${this.playerCharacter.getManaRegen().toFixed(1)}`,
+      `atk(melee/ranged): ${this.playerCharacter.getMeleeAttack()}/${this.playerCharacter.getRangedAttack()}`,
+      `matk(melee/ranged): ${this.playerCharacter.getMeleeMagicAttack()}/${this.playerCharacter.getRangedMagicAttack()}`,
+      `def/move: ${this.playerCharacter.getDefense()}/${this.playerCharacter.getMoveSpeed().toFixed(2)}`,
+      `atk spd/magic spd: ${this.playerCharacter.getAttackSpeed().toFixed(2)}/${this.playerCharacter.getMagicAttackSpeed().toFixed(2)}`,
+      `full defense: ${(this.playerCharacter.getFullDefenseChance() * 100).toFixed(1)}%`,
+      `buffs: ${activeBuffSummary}`,
+      `cooldowns: ${cooldownSummary}`,
+      `poisoned: ${this.playerCharacter.isPoisoned() ? 'yes' : 'no'}`,
       `guard: ${this.getGuardStatusText()}`,
       `life state: ${this.isDead() ? 'dead' : 'alive'}`,
       `gold: ${this.gold}  potions: ${this.getItemCount('potion_minor')}  keys: ${this.getItemCount('utility_key')}`,
@@ -732,6 +759,7 @@ export class GameScene extends Phaser.Scene {
       this.gold += result.goldDelta
       this.applyUnlockedAchievements(result.unlocked)
       this.interactionStatus = result.status
+      this.refreshCharacterStatSources()
       this.saveProgress()
       return
     }
@@ -761,16 +789,16 @@ export class GameScene extends Phaser.Scene {
       now: this.time.now,
       trapRearmMs: TRAP_REARM_MS,
       trapDamageAmount: TRAP_DAMAGE_AMOUNT,
-      health: this.health,
-      poisoned: this.poisoned,
-      guardActive: isGuardActive(this.guardBuffUntil, this.time.now),
+      health: this.playerCharacter.getHealth(),
+      poisoned: this.playerCharacter.isPoisoned(),
+      guardActive: this.playerCharacter.isGuardActive(this.time.now),
     })
     if (!result.triggered) {
       return
     }
 
-    this.health = result.health
-    this.poisoned = result.poisoned
+    this.playerCharacter.setHealth(result.health)
+    this.playerCharacter.setPoisoned(result.poisoned)
     this.interactionStatus = result.status
     this.saveProgress()
   }
@@ -780,8 +808,8 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    const result = applyDebugDamage(this.health, DEBUG_DAMAGE_AMOUNT)
-    this.health = result.health
+    const result = applyDebugDamage(this.playerCharacter.getHealth(), DEBUG_DAMAGE_AMOUNT)
+    this.playerCharacter.setHealth(result.health)
     this.interactionStatus = result.status
     this.saveProgress()
   }
@@ -795,7 +823,11 @@ export class GameScene extends Phaser.Scene {
     this.player.clearDestination()
     this.player.setMapPosition(spawn.x, spawn.y)
     this.player.commitMapPosition(spawn.x, spawn.y)
-    this.health = getRespawnHealth(this.maxHealth, RESPAWN_HEALTH_RATIO)
+    this.playerCharacter.setHealth(
+      getRespawnHealth(this.playerCharacter.getMaxHealth(), RESPAWN_HEALTH_RATIO)
+    )
+    this.playerCharacter.setPoisoned(false)
+    this.playerCharacter.setGuardBuffRemainingMs(0, this.time.now)
     this.interactionStatus = `respawned on floor ${this.floorIndex}`
     this.saveProgress()
   }
@@ -821,6 +853,7 @@ export class GameScene extends Phaser.Scene {
         ? `, failed ${result.failedItemDefinitionIds.length + beltResult.failedItemDefinitionIds.length}`
         : '')
     if (result.addedCount > 0 || beltResult.addedCount > 0) {
+      this.refreshCharacterStatSources()
       this.saveProgress()
     }
   }
@@ -872,12 +905,15 @@ export class GameScene extends Phaser.Scene {
     return createStoredProgressSnapshot({
       floorIndex: this.floorIndex,
       gold: this.gold,
-      health: this.health,
-      maxHealth: this.maxHealth,
-      mana: this.mana,
-      maxMana: this.maxMana,
-      poisoned: this.poisoned,
-      guardBuffRemainingMs: Math.max(0, this.guardBuffUntil - this.time.now),
+      jobId: this.playerCharacter.getJobId(),
+      health: this.playerCharacter.getHealth(),
+      maxHealth: this.playerCharacter.getMaxHealth(),
+      mana: this.playerCharacter.getMana(),
+      maxMana: this.playerCharacter.getMaxMana(),
+      poisoned: this.playerCharacter.isPoisoned(),
+      guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(this.time.now),
+      activeItemBuffs: serializeActiveItemBuffs(this.activeItemBuffs, this.time.now),
+      itemCooldowns: serializeItemCooldowns(this.itemCooldowns, this.time.now),
       inventory: this.inventory,
       beltInventory: this.beltInventory,
       journeyLog: this.journeyLog,
@@ -887,8 +923,8 @@ export class GameScene extends Phaser.Scene {
 
   private applyProgressSnapshot(snapshot: ProgressSnapshot): void {
     const loaded = applyStoredProgressSnapshot(snapshot, {
-      defaultHealth: DEFAULT_MAX_HEALTH,
-      defaultMana: DEFAULT_MAX_MANA,
+      defaultHealth: this.playerCharacter.getMaxHealth(),
+      defaultMana: this.playerCharacter.getMaxMana(),
       inventoryCols: INVENTORY_COLS,
       inventoryRows: INVENTORY_ROWS,
       beltCols: BELT_COLS,
@@ -897,16 +933,20 @@ export class GameScene extends Phaser.Scene {
 
     this.floorIndex = loaded.runtime.floorIndex
     this.gold = loaded.runtime.gold
-    this.health = loaded.runtime.health
-    this.maxHealth = loaded.runtime.maxHealth
-    this.mana = loaded.runtime.mana
-    this.maxMana = loaded.runtime.maxMana
-    this.poisoned = loaded.runtime.poisoned
-    this.guardBuffUntil = this.time.now + loaded.runtime.guardBuffRemainingMs
+    this.playerCharacter.applyRuntimeSnapshot({
+      jobId: loaded.runtime.jobId,
+      health: loaded.runtime.health,
+      mana: loaded.runtime.mana,
+      poisoned: loaded.runtime.poisoned,
+      guardBuffRemainingMs: loaded.runtime.guardBuffRemainingMs,
+    }, this.time.now)
+    this.activeItemBuffs = restoreActiveItemBuffs(loaded.runtime.activeItemBuffs, this.time.now)
+    this.itemCooldowns = restoreItemCooldowns(loaded.runtime.itemCooldowns, this.time.now)
     this.inventory = loaded.runtime.inventory
     this.beltInventory = loaded.runtime.beltInventory
     this.journeyLog = loaded.journeyLog
     this.achievements = loaded.achievements
+    this.refreshCharacterStatSources()
   }
 
   private getItemCount(itemDefinitionId: string): number {
@@ -921,7 +961,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isDead(): boolean {
-    return isDead(this.health)
+    return this.playerCharacter.isDead()
   }
 
   private applyUnlockedAchievements(labels: string[]): void {
@@ -933,20 +973,45 @@ export class GameScene extends Phaser.Scene {
   }
 
   private useInventoryItem(itemDefinitionId: string): void {
+    const definition = getItemDefinition(itemDefinitionId)
+    if (definition.cooldownGroup && isItemCooldownActive(this.itemCooldowns, definition.cooldownGroup, this.time.now)) {
+      const remainingMs = getItemCooldownRemainingMs(this.itemCooldowns, definition.cooldownGroup, this.time.now)
+      this.interactionStatus = `${definition.name} cooldown: ${(remainingMs / 1000).toFixed(1)}s`
+      return
+    }
+
     const beltResult = applyInventoryItemUse({
       inventory: this.beltInventory,
       itemDefinitionId,
-      health: this.health,
-      maxHealth: this.maxHealth,
-      mana: this.mana,
-      maxMana: this.maxMana,
-      poisoned: this.poisoned,
+      health: this.playerCharacter.getHealth(),
+      maxHealth: this.playerCharacter.getMaxHealth(),
+      mana: this.playerCharacter.getMana(),
+      maxMana: this.playerCharacter.getMaxMana(),
+      poisoned: this.playerCharacter.isPoisoned(),
     })
     if (beltResult.used) {
-      this.health = beltResult.health
-      this.mana = beltResult.mana
-      this.poisoned = beltResult.poisoned
-      this.guardBuffUntil = Math.max(this.guardBuffUntil, this.time.now + beltResult.guardDurationMs)
+      this.playerCharacter.setHealth(beltResult.health)
+      this.playerCharacter.setMana(beltResult.mana)
+      this.playerCharacter.setPoisoned(beltResult.poisoned)
+      this.playerCharacter.extendGuardBuff(beltResult.guardDurationMs, this.time.now)
+      if (beltResult.statBuffDurationMs > 0 && beltResult.statBuffItemDefinitionId) {
+        this.activeItemBuffs = upsertActiveItemBuff({
+          activeBuffs: this.activeItemBuffs,
+          itemDefinitionId: beltResult.statBuffItemDefinitionId,
+          durationMs: beltResult.statBuffDurationMs,
+          now: this.time.now,
+          group: beltResult.cooldownGroup,
+        })
+      }
+      if (beltResult.cooldownGroup && beltResult.cooldownMs > 0) {
+        this.itemCooldowns = setItemCooldown(
+          this.itemCooldowns,
+          beltResult.cooldownGroup,
+          beltResult.cooldownMs,
+          this.time.now
+        )
+      }
+      this.refreshCharacterStatSources()
       this.interactionStatus = beltResult.status
       this.saveProgress()
       return
@@ -955,16 +1020,34 @@ export class GameScene extends Phaser.Scene {
     const result = applyInventoryItemUse({
       inventory: this.inventory,
       itemDefinitionId,
-      health: this.health,
-      maxHealth: this.maxHealth,
-      mana: this.mana,
-      maxMana: this.maxMana,
-      poisoned: this.poisoned,
+      health: this.playerCharacter.getHealth(),
+      maxHealth: this.playerCharacter.getMaxHealth(),
+      mana: this.playerCharacter.getMana(),
+      maxMana: this.playerCharacter.getMaxMana(),
+      poisoned: this.playerCharacter.isPoisoned(),
     })
-    this.health = result.health
-    this.mana = result.mana
-    this.poisoned = result.poisoned
-    this.guardBuffUntil = Math.max(this.guardBuffUntil, this.time.now + result.guardDurationMs)
+    this.playerCharacter.setHealth(result.health)
+    this.playerCharacter.setMana(result.mana)
+    this.playerCharacter.setPoisoned(result.poisoned)
+    this.playerCharacter.extendGuardBuff(result.guardDurationMs, this.time.now)
+    if (result.statBuffDurationMs > 0 && result.statBuffItemDefinitionId) {
+      this.activeItemBuffs = upsertActiveItemBuff({
+        activeBuffs: this.activeItemBuffs,
+        itemDefinitionId: result.statBuffItemDefinitionId,
+        durationMs: result.statBuffDurationMs,
+        now: this.time.now,
+        group: result.cooldownGroup,
+      })
+    }
+    if (result.cooldownGroup && result.cooldownMs > 0) {
+      this.itemCooldowns = setItemCooldown(
+        this.itemCooldowns,
+        result.cooldownGroup,
+        result.cooldownMs,
+        this.time.now
+      )
+    }
+    this.refreshCharacterStatSources()
     this.interactionStatus = result.status
     if (!result.used) {
       return
@@ -974,11 +1057,46 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getGuardStatusText(): string {
-    const remainingMs = Math.max(0, this.guardBuffUntil - this.time.now)
+    const remainingMs = this.playerCharacter.getGuardBuffRemainingMs(this.time.now)
     if (remainingMs <= 0) {
       return 'off'
     }
 
     return `${(remainingMs / 1000).toFixed(1)}s`
+  }
+
+  private refreshActiveItemBuffs(): void {
+    const nextActiveItemBuffs = this.activeItemBuffs.filter(buff => buff.expiresAt > this.time.now)
+    if (nextActiveItemBuffs.length === this.activeItemBuffs.length) {
+      return
+    }
+
+    this.activeItemBuffs = nextActiveItemBuffs
+    this.refreshCharacterStatSources()
+  }
+
+  private refreshItemCooldowns(): void {
+    this.itemCooldowns = pruneExpiredItemCooldowns(this.itemCooldowns, this.time.now)
+  }
+
+  private refreshCharacterStatSources(): void {
+    this.playerCharacter.setEquipmentBonuses(getInventoryEquipmentStatBonuses(this.inventory))
+    this.playerCharacter.setPotionBonuses(getActiveItemBuffStatBonuses(this.activeItemBuffs, this.time.now))
+  }
+
+  private getActiveBuffSummaryText(): string {
+    const activeBuffs = this.activeItemBuffs
+      .filter(buff => buff.expiresAt > this.time.now)
+      .map(buff => `${getItemDefinition(buff.itemDefinitionId).name} ${(Math.max(0, buff.expiresAt - this.time.now) / 1000).toFixed(1)}s`)
+
+    return activeBuffs.length > 0 ? activeBuffs.join(', ') : 'none'
+  }
+
+  private getItemCooldownSummaryText(): string {
+    const activeCooldowns = this.itemCooldowns
+      .filter(cooldown => cooldown.expiresAt > this.time.now)
+      .map(cooldown => `${cooldown.group} ${(Math.max(0, cooldown.expiresAt - this.time.now) / 1000).toFixed(1)}s`)
+
+    return activeCooldowns.length > 0 ? activeCooldowns.join(', ') : 'none'
   }
 }
