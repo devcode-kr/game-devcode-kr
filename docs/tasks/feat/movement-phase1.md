@@ -321,3 +321,9 @@ node scripts/generate-character-sheet.mjs
 - Added a debug path overlay using `Phaser.GameObjects.Graphics`.
 - The path draws from the player position through each remaining waypoint.
 - Intermediate nodes render as light markers, and the final destination renders as an orange marker.
+
+## Responsive viewport
+- Switched Phaser scale mode from fixed `FIT` to parent-driven `RESIZE`.
+- Game creation now uses the parent element's current width and height instead of a fixed `800x600`.
+- `GameCanvas` now uses `ResizeObserver` to forward container size changes to `game.scale.resize(...)`.
+- The app root now uses `100dvh` and removes the old `minHeight: 600px` constraint.

@@ -13,7 +13,7 @@ const GameCanvas = dynamic(() => import('../components/GameCanvas'), {
 
 export default function Home() {
   return (
-    <main className="flex items-center justify-center w-full h-screen bg-black">
+    <main className="w-full h-[100dvh] bg-black overflow-hidden">
       <GameCanvas />
     </main>
   )
