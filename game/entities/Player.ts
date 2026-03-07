@@ -83,6 +83,10 @@ export class Player extends Phaser.GameObjects.Container {
     this.controller.setDestination(x, y)
   }
 
+  setPath(points: Array<{ x: number; y: number }>): void {
+    this.controller.setPath(points)
+  }
+
   clearDestination(): void {
     this.controller.clearDestination()
   }
@@ -97,6 +101,10 @@ export class Player extends Phaser.GameObjects.Container {
 
   getDestination(): Phaser.Math.Vector2 | null {
     return this.controller.getDestination()
+  }
+
+  getPathLength(): number {
+    return this.controller.getPathLength()
   }
 
   getAnimationState(): AnimationState {

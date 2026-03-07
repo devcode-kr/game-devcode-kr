@@ -310,3 +310,9 @@ node scripts/generate-character-sheet.mjs
 ## Frame stability
 - Replaced `setCrop`-based sprite selection with real spritesheet frame selection to keep the player anchor stable across direction/frame changes.
 - Preload now uses `load.spritesheet(..., { frameWidth: 64, frameHeight: 128 })` and Player uses `setFrame(row * 8 + column)`.
+
+## A* click move
+- Added `game/pathfinding/AStar.ts` for 8-direction tile pathfinding.
+- Diagonal movement is allowed, but corner cutting through blocked tiles is prevented.
+- Click movement now computes a tile path and feeds waypoint centers into `MovementController` instead of moving in a straight line.
+- HUD now shows remaining `path length`.

@@ -24,6 +24,7 @@ export class MovementController {
   private readonly facing = new Phaser.Math.Vector2(0, 1)
   private readonly velocity = new Phaser.Math.Vector2()
   private destination: Phaser.Math.Vector2 | null = null
+  private pathQueue: Phaser.Math.Vector2[] = []
   private mode: MovementMode = 'idle'
   private readonly config: MovementControllerConfig
 
@@ -48,7 +49,7 @@ export class MovementController {
   }
 
   hasDestination(): boolean {
-    return this.destination !== null
+    return this.destination !== null || this.pathQueue.length > 0
   }
 
   getDestination(): Phaser.Math.Vector2 | null {
@@ -56,15 +57,27 @@ export class MovementController {
   }
 
   setDestination(x: number, y: number): void {
+    this.pathQueue = []
     this.destination = new Phaser.Math.Vector2(x, y)
     this.mode = 'click-move'
   }
 
+  setPath(points: Array<{ x: number; y: number }>): void {
+    this.pathQueue = points.map(point => new Phaser.Math.Vector2(point.x, point.y))
+    this.destination = this.pathQueue.shift() ?? null
+    this.mode = this.destination ? 'click-move' : 'idle'
+  }
+
   clearDestination(): void {
     this.destination = null
+    this.pathQueue = []
     if (this.mode === 'click-move') {
       this.mode = 'idle'
     }
+  }
+
+  getPathLength(): number {
+    return (this.destination ? 1 : 0) + this.pathQueue.length
   }
 
   step(deltaMs: number, manualDirection: Phaser.Math.Vector2): MovementSnapshot {
@@ -96,9 +109,12 @@ export class MovementController {
 
     if (Phaser.Math.Distance.Between(x, y, this.destination.x, this.destination.y) <= this.config.arrivalThreshold) {
       this.position.copy(this.destination)
-      this.destination = null
-      this.velocity.set(0, 0)
-      this.mode = 'idle'
+      this.destination = this.pathQueue.shift() ?? null
+
+      if (!this.destination) {
+        this.velocity.set(0, 0)
+        this.mode = 'idle'
+      }
     }
   }
 
@@ -108,6 +124,7 @@ export class MovementController {
     if (manualDirection.lengthSq() > 0) {
       resolved.copy(manualDirection).normalize()
       this.destination = null
+      this.pathQueue = []
       this.mode = 'manual'
       return resolved
     }
