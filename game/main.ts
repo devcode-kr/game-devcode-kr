@@ -15,10 +15,16 @@ export function getGameViewportSize(parent: HTMLElement): { width: number; heigh
   }
 }
 
+export function applyGameDisplaySize(game: Phaser.Game): void {
+  game.canvas.style.width = '100%'
+  game.canvas.style.height = '100%'
+  game.canvas.style.display = 'block'
+}
+
 export function createGame(parent: HTMLElement): Phaser.Game {
   const { width, height } = getGameViewportSize(parent)
 
-  return new Phaser.Game({
+  const game = new Phaser.Game({
     type: Phaser.AUTO,
     width,
     height,
@@ -26,7 +32,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     parent,
     scene: [PreloadScene, GameScene],
     scale: {
-      mode: Phaser.Scale.RESIZE,
+      mode: Phaser.Scale.NONE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
     physics: {
@@ -34,4 +40,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
       arcade: { debug: false },
     },
   })
+
+  applyGameDisplaySize(game)
+  return game
 }
