@@ -1,7 +1,19 @@
 import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
+import {
+  resolveNpcDialogue,
+  type DialogueScript,
+  type NpcProfile,
+} from '../npc/NpcDialogue'
 import { findAStarPath } from '../pathfinding/AStar'
+import {
+  createLocalStorageProgressStore,
+  type AchievementState,
+  type JourneyLog,
+  type ProgressSnapshot,
+  type ProgressStore,
+} from '../progress/ProgressStore'
 import {
   cellCenter,
   HALF_TILE_HEIGHT,
@@ -19,6 +31,7 @@ const VISIBILITY_RADIUS = 12
 const PATH_SEARCH_BUDGET_MULTIPLIER = 1.5
 const MIN_PATH_SEARCH_BUDGET = 8
 const INTERACTION_RANGE = 1.1
+const PROGRESS_STORAGE_KEY = 'game-devcode-kr/progress'
 
 type InteractableKind = 'chest' | 'locked-chest' | 'stairs' | 'npc'
 
@@ -31,6 +44,7 @@ interface Interactable {
   used: boolean
   reward?: ChestReward
   dialogue?: DialogueScript
+  npcProfile?: NpcProfile
 }
 
 type ChestRewardKind = 'gold' | 'potion' | 'key'
@@ -38,11 +52,6 @@ type ChestRewardKind = 'gold' | 'potion' | 'key'
 interface ChestReward {
   kind: ChestRewardKind
   amount: number
-}
-
-interface DialogueScript {
-  speaker: string
-  lines: string[]
 }
 
 function tileKey(x: number, y: number): string {
@@ -68,6 +77,27 @@ export class GameScene extends Phaser.Scene {
   private potions = 0
   private keys = 0
   private activeDialogue: { interactableId: string; script: DialogueScript; lineIndex: number } | null = null
+  private journeyLog: JourneyLog = {
+    currentChapter: 'Entered the dungeon',
+    steps: {
+      enteredDungeon: false,
+      talkedToNpc: false,
+      foundKey: false,
+      openedLockedChest: false,
+      reachedNextFloor: false,
+    },
+  }
+  private achievements: AchievementState = {
+    counters: {
+      npcTalks: 0,
+      chestsOpened: 0,
+      lockedChestsOpened: 0,
+      keysCollected: 0,
+      floorsReached: 1,
+    },
+    unlocked: [],
+  }
+  private readonly progressStore: ProgressStore = createLocalStorageProgressStore(PROGRESS_STORAGE_KEY)
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private interactKey!: Phaser.Input.Keyboard.Key
@@ -132,6 +162,7 @@ export class GameScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys()
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
 
+    this.loadProgress()
     this.generateFloor(true)
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -316,6 +347,8 @@ export class GameScene extends Phaser.Scene {
       `path status: ${this.pathStatus}`,
       `interaction: ${this.interactionStatus}`,
       `gold: ${this.gold}  potions: ${this.potions}  keys: ${this.keys}`,
+      `journey: ${this.journeyLog.currentChapter}`,
+      `achievements: ${this.achievements.unlocked.length > 0 ? this.achievements.unlocked.join(', ') : 'none'}`,
     ])
   }
 
@@ -595,12 +628,24 @@ export class GameScene extends Phaser.Scene {
     this.refreshVisibility()
 
     if (resetFloorIndex) {
-      this.floorIndex = 1
-      this.interactionStatus = 'entered floor 1'
+      if (this.floorIndex <= 1) {
+        this.floorIndex = 1
+        this.journeyLog.steps.enteredDungeon = true
+        this.journeyLog.currentChapter = 'Entered the dungeon'
+        this.achievements.counters.floorsReached = 1
+      }
+
+      this.saveProgress()
+      this.interactionStatus = `entered floor ${this.floorIndex}`
       return
     }
 
     this.floorIndex += 1
+    this.journeyLog.steps.reachedNextFloor = true
+    this.journeyLog.currentChapter = `Reached floor ${this.floorIndex}`
+    this.achievements.counters.floorsReached = Math.max(this.achievements.counters.floorsReached, this.floorIndex)
+    this.unlockAchievement('first-descent', this.achievements.counters.floorsReached >= 2, 'First Descent')
+    this.saveProgress()
     this.interactionStatus = `entered floor ${this.floorIndex}`
   }
 
@@ -652,14 +697,10 @@ export class GameScene extends Phaser.Scene {
       image: this.add.image(-9999, -9999, key),
       used: false,
       reward: kind === 'chest' || kind === 'locked-chest' ? this.rollChestReward() : undefined,
-      dialogue: kind === 'npc'
+      dialogue: undefined,
+      npcProfile: kind === 'npc'
         ? {
             speaker: 'Caretaker',
-            lines: [
-              'You are still learning this place. Do not trust the shortest road.',
-              'Open the chests if you want supplies. The locked one needs a key.',
-              'When you are ready, take the stairs and keep moving downward.',
-            ],
           }
         : undefined,
     }
@@ -700,10 +741,18 @@ export class GameScene extends Phaser.Scene {
 
       if (interactable.kind === 'locked-chest') {
         this.keys -= 1
+        this.journeyLog.steps.openedLockedChest = true
+        this.journeyLog.currentChapter = 'Opened a locked chest'
+        this.achievements.counters.lockedChestsOpened += 1
+        this.unlockAchievement('lockbreaker', this.achievements.counters.lockedChestsOpened >= 1, 'Lockbreaker')
       }
 
       interactable.used = true
+      this.achievements.counters.chestsOpened += 1
+      this.unlockAchievement('first-loot', this.achievements.counters.chestsOpened >= 1, 'First Loot')
+      this.unlockAchievement('treasure-hunter', this.achievements.counters.chestsOpened >= 3, 'Treasure Hunter')
       this.applyChestReward(interactable.reward, interactable.kind === 'locked-chest')
+      this.saveProgress()
       return
     }
 
@@ -735,7 +784,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startDialogue(interactable: Interactable): void {
-    if (!interactable.dialogue) {
+    const profile = interactable.npcProfile
+    if (!profile) {
+      this.interactionStatus = 'npc has nothing to say'
+      return
+    }
+
+    const dialogue = resolveNpcDialogue(profile, {
+      journeyLog: this.journeyLog,
+      achievements: this.achievements,
+    })
+    if (!dialogue) {
       this.interactionStatus = 'npc has nothing to say'
       return
     }
@@ -743,10 +802,15 @@ export class GameScene extends Phaser.Scene {
     this.player.clearDestination()
     this.activeDialogue = {
       interactableId: interactable.id,
-      script: interactable.dialogue,
+      script: dialogue,
       lineIndex: 0,
     }
-    this.interactionStatus = `talking to ${interactable.dialogue.speaker}`
+    this.journeyLog.steps.talkedToNpc = true
+    this.journeyLog.currentChapter = `Spoke with ${dialogue.speaker}`
+    this.achievements.counters.npcTalks += 1
+    this.unlockAchievement('first-conversation', this.achievements.counters.npcTalks >= 1, 'First Conversation')
+    this.saveProgress()
+    this.interactionStatus = `talking to ${dialogue.speaker}`
   }
 
   private advanceDialogue(): void {
@@ -808,6 +872,54 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.keys += reward.amount
+    this.journeyLog.steps.foundKey = true
+    this.journeyLog.currentChapter = 'Found a key'
+    this.achievements.counters.keysCollected += reward.amount
+    this.unlockAchievement('key-bearer', this.achievements.counters.keysCollected >= 1, 'Key Bearer')
     this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${reward.amount} key`
+  }
+
+  private unlockAchievement(_id: string, condition: boolean, label: string): void {
+    if (!condition || this.achievements.unlocked.includes(label)) {
+      return
+    }
+
+    this.achievements.unlocked.push(label)
+    if (this.interactionStatus === 'none') {
+      this.interactionStatus = `achievement unlocked: ${label}`
+    }
+  }
+
+  private loadProgress(): void {
+    const snapshot = this.progressStore.load()
+    if (!snapshot) {
+      return
+    }
+
+    this.applyProgressSnapshot(snapshot)
+  }
+
+  private saveProgress(): void {
+    this.progressStore.save(this.createProgressSnapshot())
+  }
+
+  private createProgressSnapshot(): ProgressSnapshot {
+    return {
+      floorIndex: this.floorIndex,
+      gold: this.gold,
+      potions: this.potions,
+      keys: this.keys,
+      journeyLog: this.journeyLog,
+      achievements: this.achievements,
+    }
+  }
+
+  private applyProgressSnapshot(snapshot: ProgressSnapshot): void {
+    this.floorIndex = snapshot.floorIndex
+    this.gold = snapshot.gold
+    this.potions = snapshot.potions
+    this.keys = snapshot.keys
+    this.journeyLog = snapshot.journeyLog
+    this.achievements = snapshot.achievements
   }
 }
