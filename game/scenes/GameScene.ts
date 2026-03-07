@@ -1,134 +1,147 @@
 import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
+import {
+  cellCenter,
+  HALF_TILE_HEIGHT,
+  HALF_TILE_WIDTH,
+  screenToWorld,
+  TILE_HEIGHT,
+  TILE_WIDTH,
+  worldToScreen,
+} from '../iso'
 
-let worldX = 0
-let worldY = 0
-
-const TILE_W = 96
-const TILE_H = 48
 const POOL_SIZE = 1000
+const PLAYER_RADIUS = 0.24
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
-  private playerShadow!: Phaser.GameObjects.Ellipse
   private dungeon!: BSPDungeon
   private tilePool: Phaser.GameObjects.Image[] = []
+  private inputVector = new Phaser.Math.Vector2()
+  private hoverMarker!: Phaser.GameObjects.Ellipse
+  private hudText!: Phaser.GameObjects.Text
+  private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
 
   constructor() {
     super({ key: 'GameScene' })
   }
 
   create() {
-    const { width, height } = this.scale
-
     this.cameras.main.setBackgroundColor(0x111111)
 
-    // BSP 던전 생성
     this.dungeon = new BSPDungeon(80, 80)
     this.dungeon.generate()
-    console.log('Dungeon generated with', this.dungeon.getRooms().length, 'rooms')
 
-    // 마름모 타일 텍스처 베이크 (ground.png 클리핑 or 단색 폰백)
     this.bakeDiamonds()
 
-    // Image 풀 생성 (던전용)
     for (let i = 0; i < POOL_SIZE; i++) {
       this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
     }
 
-    // 플레이어 그림자
-    this.playerShadow = this.add.ellipse(width / 2, height / 2 + 10, 28, 10, 0x000000, 0.5)
-    this.playerShadow.setDepth(9998)
+    this.player = new Player(this)
+    const start = this.dungeon.getStartPosition()
+    const spawn = cellCenter(start.x, start.y)
+    this.player.setMapPosition(spawn.x, spawn.y)
 
-    // 플레이어를 던전 시작 위치에 배치
-    const startPos = this.dungeon.getStartPosition()
-    worldX = startPos.x * TILE_W
-    worldY = startPos.y * TILE_H
+    this.hoverMarker = this.add.ellipse(0, 0, 28, 14)
+    this.hoverMarker.setStrokeStyle(2, 0xf59e0b, 0.95)
+    this.hoverMarker.setFillStyle(0x000000, 0)
+    this.hoverMarker.setDepth(9997)
 
-    this.player = new Player(this, width / 2, height / 2)
+    this.hudText = this.add.text(16, 16, '', {
+      color: '#f8fafc',
+      fontSize: '14px',
+      fontFamily: 'monospace',
+      backgroundColor: '#00000066',
+      padding: { x: 10, y: 8 },
+    })
+    this.hudText.setDepth(10000)
+    this.hudText.setScrollFactor(0)
 
-    this.drawDungeon()
+    this.wasd = {
+      up: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      down: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      left: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      right: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+    }
+    this.cursors = this.input.keyboard!.createCursorKeys()
+
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.button !== 0) {
+        return
+      }
+
+      const targetCell = this.pointerToTile(pointer.x, pointer.y)
+      if (!targetCell || !this.dungeon.isWalkable(targetCell.x, targetCell.y)) {
+        this.player.clearDestination()
+        return
+      }
+
+      const destination = cellCenter(targetCell.x, targetCell.y)
+      this.player.setDestination(destination.x, destination.y)
+    })
+
+    this.drawDungeon(false)
   }
 
-  /**
-   * ground.png 를 마름모 shape 으로 클리핑해서 tile-a / tile-b 텍스처 베이크.
-   * tile-b 는 약간 어둡게 처리해 체커보드 구분.
-   * Canvas API 실패 시 단색 Graphics 폰백.
-   */
-  private bakeDiamonds() {
-    const halfW = TILE_W / 2
-    const halfH = TILE_H / 2
-    const groundImg = this.textures.get('ground').getSourceImage() as HTMLImageElement
+  update(_time: number, delta: number) {
+    const input = this.readInputVector()
+    const movement = this.player.step(delta, input)
+    const current = this.player.getMapPosition()
+    let nextX = current.x
+    let nextY = current.y
 
-    const variants: { key: string; darken: number }[] = [
-      { key: 'tile-a', darken: 0 },
-      { key: 'tile-b', darken: 0.25 },
+    if (movement.velocity.lengthSq() > 0) {
+      if (this.canOccupy(movement.nextPosition.x, current.y)) {
+        nextX = movement.nextPosition.x
+      }
+      if (this.canOccupy(nextX, movement.nextPosition.y)) {
+        nextY = movement.nextPosition.y
+      }
+
+      if (nextX === current.x && nextY === current.y && movement.mode === 'click-move') {
+        this.player.clearDestination()
+      }
+    }
+
+    this.player.commitMapPosition(nextX, nextY)
+    this.drawDungeon(movement.velocity.lengthSq() > 0)
+  }
+
+  private bakeDiamonds() {
+    const variants: Array<{ key: string; fill: number; stroke: number }> = [
+      { key: 'tile-a', fill: 0x3a5c3a, stroke: 0xaabbaa },
+      { key: 'tile-b', fill: 0x2e4a2e, stroke: 0x90aa90 },
+      { key: 'tile-corridor', fill: 0x355767, stroke: 0x9eb9c3 },
     ]
 
-    for (const { key, darken } of variants) {
-      if (this.textures.exists(key)) this.textures.remove(key)
-
-      const ct = this.textures.createCanvas(key, TILE_W, TILE_H)
-
-      if (ct) {
-        // ── Canvas: 마름모 클리핑 후 ground.png 텍스처 그리기 ──
-        const ctx = ct.context
-
-        ctx.beginPath()
-        ctx.moveTo(halfW, 0)
-        ctx.lineTo(TILE_W, halfH)
-        ctx.lineTo(halfW, TILE_H)
-        ctx.lineTo(0, halfH)
-        ctx.closePath()
-        ctx.clip()
-
-        // ground.png 를 타일 크기에 맞게 스케일해서 붙여넣기
-        ctx.drawImage(groundImg, 0, 0, TILE_W, TILE_H)
-
-        // tile-b 는 어두운 오버레이로 체커보드 구분
-        if (darken > 0) {
-          ctx.fillStyle = `rgba(0,0,0,${darken})`
-          ctx.fillRect(0, 0, TILE_W, TILE_H)
-        }
-
-        // 테두리선
-        ctx.beginPath()
-        ctx.moveTo(halfW, 1)
-        ctx.lineTo(TILE_W - 1, halfH)
-        ctx.lineTo(halfW, TILE_H - 1)
-        ctx.lineTo(1, halfH)
-        ctx.closePath()
-        ctx.strokeStyle = 'rgba(180,210,180,0.4)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-
-        ct.refresh()
-      } else {
-        // ── 폰백: 단색 Graphics ──
-        const g = this.add.graphics()
-        const color = darken > 0 ? 0x2e4a2e : 0x3a5c3a
-        g.fillStyle(color, 1)
-        g.lineStyle(1, 0xaabbaa, 0.6)
-        g.beginPath()
-        g.moveTo(halfW, 0)
-        g.lineTo(TILE_W, halfH)
-        g.lineTo(halfW, TILE_H)
-        g.lineTo(0, halfH)
-        g.closePath()
-        g.fillPath()
-        g.strokePath()
-        g.generateTexture(key, TILE_W, TILE_H)
-        g.destroy()
+    for (const variant of variants) {
+      if (this.textures.exists(variant.key)) {
+        this.textures.remove(variant.key)
       }
+
+      const graphics = this.make.graphics({ x: 0, y: 0 }, false)
+      graphics.fillStyle(variant.fill, 1)
+      graphics.lineStyle(1, variant.stroke, 0.65)
+      graphics.beginPath()
+      graphics.moveTo(HALF_TILE_WIDTH, 0)
+      graphics.lineTo(TILE_WIDTH, HALF_TILE_HEIGHT)
+      graphics.lineTo(HALF_TILE_WIDTH, TILE_HEIGHT)
+      graphics.lineTo(0, HALF_TILE_HEIGHT)
+      graphics.closePath()
+      graphics.fillPath()
+      graphics.strokePath()
+      graphics.generateTexture(variant.key, TILE_WIDTH, TILE_HEIGHT)
+      graphics.destroy()
     }
   }
 
-  private drawDungeon() {
+  private drawDungeon(isMoving: boolean) {
     const { width, height } = this.scale
-    const halfW = TILE_W / 2
-    const halfH = TILE_H / 2
-
+    const playerWorld = this.player.getMapPosition()
+    const playerScreen = worldToScreen(playerWorld)
     const grid = this.dungeon.getGrid()
     let poolIdx = 0
 
@@ -137,60 +150,106 @@ export class GameScene extends Phaser.Scene {
         const tile = grid[gy][gx]
         if (tile === TileType.WALL) continue
 
-        // 타일 월드 좌표
-        const tw = gx * TILE_W
-        const th = gy * TILE_H
+        const screen = worldToScreen(cellCenter(gx, gy))
+        const sx = screen.x - playerScreen.x + width / 2
+        const sy = screen.y - playerScreen.y + height / 2
 
-        // 화면 좌표로 변환 (isometric)
-        const sx = tw - worldX + width / 2
-        const sy = th - worldY + height / 2
-
-        // 화면 밖이면 스킵
-        if (sx + halfW < 0 || sx - halfW > width) continue
-        if (sy + halfH < 0 || sy - halfH > height) continue
+        if (sx + HALF_TILE_WIDTH < 0 || sx - HALF_TILE_WIDTH > width) continue
+        if (sy + HALF_TILE_HEIGHT < 0 || sy - HALF_TILE_HEIGHT > height) continue
 
         if (poolIdx < this.tilePool.length) {
           const image = this.tilePool[poolIdx++]
           image.setPosition(sx, sy)
-          image.setTexture((gx + gy) % 2 === 0 ? 'tile-a' : 'tile-b')
+          image.setDepth(100 + gx + gy)
+          image.setTexture(this.getTileTexture(tile, gx, gy))
         }
       }
     }
 
-    // 사용하지 않는 풀 타일 숨김
     for (; poolIdx < this.tilePool.length; poolIdx++) {
       this.tilePool[poolIdx].setPosition(-9999, -9999)
     }
+
+    const hovered = this.pointerToTile(this.input.activePointer.x, this.input.activePointer.y)
+    if (hovered && this.dungeon.isWalkable(hovered.x, hovered.y)) {
+      const marker = worldToScreen(cellCenter(hovered.x, hovered.y))
+      this.hoverMarker.setVisible(true)
+      this.hoverMarker.setPosition(
+        marker.x - playerScreen.x + width / 2,
+        marker.y - playerScreen.y + height / 2
+      )
+    } else {
+      this.hoverMarker.setVisible(false)
+    }
+
+    this.player.syncScreenPosition(width / 2, height / 2 - 18, isMoving || this.player.hasDestination(), this.game.loop.delta)
+
+    const destination = this.player.getDestination()
+    this.hudText.setText([
+      'Movement Phase 1',
+      'WASD / Arrows: manual move',
+      'LMB: straight click move',
+      `mode: ${this.player.getMovementMode()}`,
+      `animation: ${this.player.getAnimationState()}`,
+      `tile: ${Math.floor(playerWorld.x)}, ${Math.floor(playerWorld.y)}`,
+      `world: ${playerWorld.x.toFixed(2)}, ${playerWorld.y.toFixed(2)}`,
+      `destination: ${destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none'}`,
+    ])
   }
 
-  private checkCollision(newX: number, newY: number): boolean {
-    // 월드 좌표를 그리드 좌표로 변환
-    const gx = Math.floor(newX / TILE_W)
-    const gy = Math.floor(newY / TILE_H)
-    return this.dungeon.isWalkable(gx, gy)
+  private readInputVector(): Phaser.Math.Vector2 {
+    let screenX = 0
+    let screenY = 0
+
+    if (this.wasd.left.isDown || this.cursors.left.isDown) screenX -= 1
+    if (this.wasd.right.isDown || this.cursors.right.isDown) screenX += 1
+    if (this.wasd.up.isDown || this.cursors.up.isDown) screenY -= 1
+    if (this.wasd.down.isDown || this.cursors.down.isDown) screenY += 1
+
+    this.inputVector.set(screenX + screenY, screenY - screenX)
+
+    if (this.inputVector.lengthSq() > 0) {
+      this.inputVector.normalize()
+    }
+
+    return this.inputVector.clone()
   }
 
-  update(_time: number, delta: number) {
+  private canOccupy(x: number, y: number): boolean {
+    return this.sampleWalkable(x, y) &&
+      this.sampleWalkable(x + PLAYER_RADIUS, y) &&
+      this.sampleWalkable(x - PLAYER_RADIUS, y) &&
+      this.sampleWalkable(x, y + PLAYER_RADIUS) &&
+      this.sampleWalkable(x, y - PLAYER_RADIUS)
+  }
+
+  private sampleWalkable(x: number, y: number): boolean {
+    return this.dungeon.isWalkable(Math.floor(x), Math.floor(y))
+  }
+
+  private pointerToTile(screenX: number, screenY: number): { x: number; y: number } | null {
     const { width, height } = this.scale
-    const { vx, vy } = this.player.update(delta)
+    const playerWorld = this.player.getMapPosition()
+    const localWorld = screenToWorld({
+      x: screenX - width / 2,
+      y: screenY - height / 2,
+    })
 
-    // 충돌 검사
-    const newX = worldX + vx
-    const newY = worldY + vy
+    const tileX = Math.floor(playerWorld.x + localWorld.x)
+    const tileY = Math.floor(playerWorld.y + localWorld.y)
 
-    // X축 이동 검사
-    if (this.checkCollision(newX, worldY)) {
-      worldX = newX
-    }
-    // Y축 이동 검사
-    if (this.checkCollision(worldX, newY)) {
-      worldY = newY
+    if (tileX < 0 || tileX >= this.dungeon.width || tileY < 0 || tileY >= this.dungeon.height) {
+      return null
     }
 
-    // 던전 타일 위치 갱신
-    this.drawDungeon()
+    return { x: tileX, y: tileY }
+  }
 
-    this.player.setScale(1.0)
-    this.playerShadow.setPosition(width / 2, height / 2 + 14)
+  private getTileTexture(tile: TileType, gx: number, gy: number): string {
+    if (tile === TileType.CORRIDOR) {
+      return 'tile-corridor'
+    }
+
+    return (gx + gy) % 2 === 0 ? 'tile-a' : 'tile-b'
   }
 }
