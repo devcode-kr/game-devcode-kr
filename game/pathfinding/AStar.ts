@@ -7,6 +7,7 @@ interface AStarConfig {
   width: number
   height: number
   isWalkable: (x: number, y: number) => boolean
+  maxVisitedNodes?: number
 }
 
 interface SearchNode extends GridPoint {
@@ -58,9 +59,13 @@ export function findAStarPath(
   start: GridPoint,
   goal: GridPoint,
   config: AStarConfig
-): GridPoint[] | null {
+): { path: GridPoint[] | null; exhaustedSearchBudget: boolean; visitedNodes: number } {
   if (!config.isWalkable(start.x, start.y) || !config.isWalkable(goal.x, goal.y)) {
-    return null
+    return {
+      path: null,
+      exhaustedSearchBudget: false,
+      visitedNodes: 0,
+    }
   }
 
   const startKey = keyOf(start.x, start.y)
@@ -101,11 +106,23 @@ export function findAStarPath(
     }
 
     if (currentKey === goalKey) {
-      return reconstructPath(nodes, currentKey)
+      return {
+        path: reconstructPath(nodes, currentKey),
+        exhaustedSearchBudget: false,
+        visitedNodes: closedKeys.size,
+      }
     }
 
     openKeys.delete(currentKey)
     closedKeys.add(currentKey)
+
+    if (config.maxVisitedNodes && closedKeys.size >= config.maxVisitedNodes) {
+      return {
+        path: null,
+        exhaustedSearchBudget: true,
+        visitedNodes: closedKeys.size,
+      }
+    }
 
     for (const neighbor of NEIGHBORS) {
       const nextX = currentNode.x + neighbor.x
@@ -153,5 +170,9 @@ export function findAStarPath(
     }
   }
 
-  return null
+  return {
+    path: null,
+    exhaustedSearchBudget: false,
+    visitedNodes: closedKeys.size,
+  }
 }

@@ -15,6 +15,39 @@ import {
 
 const POOL_SIZE = 1000
 const PLAYER_RADIUS = 0.24
+const VISIBILITY_RADIUS = 12
+const PATH_SEARCH_BUDGET_MULTIPLIER = 1.5
+const MIN_PATH_SEARCH_BUDGET = 8
+const INTERACTION_RANGE = 1.1
+
+type InteractableKind = 'chest' | 'locked-chest' | 'stairs' | 'npc'
+
+interface Interactable {
+  id: string
+  kind: InteractableKind
+  tileX: number
+  tileY: number
+  image: Phaser.GameObjects.Image
+  used: boolean
+  reward?: ChestReward
+  dialogue?: DialogueScript
+}
+
+type ChestRewardKind = 'gold' | 'potion' | 'key'
+
+interface ChestReward {
+  kind: ChestRewardKind
+  amount: number
+}
+
+interface DialogueScript {
+  speaker: string
+  lines: string[]
+}
+
+function tileKey(x: number, y: number): string {
+  return `${x},${y}`
+}
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
@@ -22,11 +55,22 @@ export class GameScene extends Phaser.Scene {
   private tilePool: Phaser.GameObjects.Image[] = []
   private pathGraphics!: Phaser.GameObjects.Graphics
   private inputVector = new Phaser.Math.Vector2()
+  private visibleTiles = new Set<string>()
+  private interactables: Interactable[] = []
   private hoverMarker!: Phaser.GameObjects.Ellipse
   private hudText!: Phaser.GameObjects.Text
+  private dialogueBox!: Phaser.GameObjects.Rectangle
+  private dialogueText!: Phaser.GameObjects.Text
   private pathStatus = 'idle'
+  private interactionStatus = 'none'
+  private floorIndex = 1
+  private gold = 0
+  private potions = 0
+  private keys = 0
+  private activeDialogue: { interactableId: string; script: DialogueScript; lineIndex: number } | null = null
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
+  private interactKey!: Phaser.Input.Keyboard.Key
 
   constructor() {
     super({ key: 'GameScene' })
@@ -34,9 +78,6 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor(0x111111)
-
-    this.dungeon = new BSPDungeon(80, 80)
-    this.dungeon.generate()
 
     this.bakeDiamonds()
 
@@ -48,9 +89,6 @@ export class GameScene extends Phaser.Scene {
     this.pathGraphics.setDepth(9996)
 
     this.player = new Player(this)
-    const start = this.dungeon.getStartPosition()
-    const spawn = cellCenter(start.x, start.y)
-    this.player.setMapPosition(spawn.x, spawn.y)
 
     this.hoverMarker = this.add.ellipse(0, 0, 28, 14)
     this.hoverMarker.setStrokeStyle(2, 0xf59e0b, 0.95)
@@ -67,6 +105,24 @@ export class GameScene extends Phaser.Scene {
     this.hudText.setDepth(10000)
     this.hudText.setScrollFactor(0)
 
+    this.dialogueBox = this.add.rectangle(0, 0, 0, 0, 0x020617, 0.9)
+    this.dialogueBox.setOrigin(0)
+    this.dialogueBox.setStrokeStyle(2, 0xcbd5e1, 0.9)
+    this.dialogueBox.setDepth(10001)
+    this.dialogueBox.setScrollFactor(0)
+    this.dialogueBox.setVisible(false)
+
+    this.dialogueText = this.add.text(0, 0, '', {
+      color: '#e2e8f0',
+      fontSize: '18px',
+      fontFamily: 'monospace',
+      wordWrap: { width: 0 },
+      lineSpacing: 6,
+    })
+    this.dialogueText.setDepth(10002)
+    this.dialogueText.setScrollFactor(0)
+    this.dialogueText.setVisible(false)
+
     this.wasd = {
       up: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
       down: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
@@ -74,8 +130,15 @@ export class GameScene extends Phaser.Scene {
       right: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     }
     this.cursors = this.input.keyboard!.createCursorKeys()
+    this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
+
+    this.generateFloor(true)
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.activeDialogue) {
+        return
+      }
+
       if (pointer.button !== 0) {
         return
       }
@@ -100,7 +163,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    const input = this.readInputVector()
+    const input = this.activeDialogue ? new Phaser.Math.Vector2() : this.readInputVector()
     const movement = this.player.step(delta, input)
     const current = this.player.getMapPosition()
     let nextX = current.x
@@ -124,6 +187,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.commitMapPosition(nextX, nextY)
+    this.refreshVisibility()
+    this.tryInteract()
 
     if (input.lengthSq() > 0) {
       this.pathStatus = 'manual override'
@@ -160,6 +225,25 @@ export class GameScene extends Phaser.Scene {
       graphics.generateTexture(variant.key, TILE_WIDTH, TILE_HEIGHT)
       graphics.destroy()
     }
+
+    this.bakeInteractableTexture('interactable-chest', 0x8b5a2b, 0xfacc15)
+    this.bakeInteractableTexture('interactable-locked-chest', 0x5b3a1e, 0x93c5fd)
+    this.bakeInteractableTexture('interactable-stairs', 0x94a3b8, 0xe2e8f0)
+    this.bakeInteractableTexture('interactable-npc', 0x0f766e, 0x99f6e4)
+  }
+
+  private bakeInteractableTexture(key: string, fill: number, stroke: number): void {
+    if (this.textures.exists(key)) {
+      this.textures.remove(key)
+    }
+
+    const graphics = this.make.graphics({ x: 0, y: 0 }, false)
+    graphics.fillStyle(fill, 1)
+    graphics.lineStyle(2, stroke, 0.95)
+    graphics.fillRoundedRect(8, 8, 32, 22, 6)
+    graphics.strokeRoundedRect(8, 8, 32, 22, 6)
+    graphics.generateTexture(key, 48, 40)
+    graphics.destroy()
   }
 
   private drawDungeon(isMoving: boolean) {
@@ -194,6 +278,7 @@ export class GameScene extends Phaser.Scene {
       this.tilePool[poolIdx].setPosition(-9999, -9999)
     }
 
+    this.drawInteractables(playerScreen, width, height)
     this.drawPath(playerWorld, playerScreen, width, height)
 
     const hovered = this.pointerToTile(this.input.activePointer.x, this.input.activePointer.y)
@@ -209,6 +294,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.syncScreenPosition(width / 2, height / 2 - 18, isMoving || this.player.hasDestination(), this.game.loop.delta)
+    this.drawDialogueUi(width, height)
 
     const destination = this.player.getDestination()
     const finalDestination = this.player.getFinalDestination()
@@ -216,6 +302,8 @@ export class GameScene extends Phaser.Scene {
       'Movement Phase 1',
       'WASD / Arrows: manual move',
       'LMB: A* click move',
+      'E: interact',
+      `floor: ${this.floorIndex}`,
       `mode: ${this.player.getMovementMode()}`,
       `animation: ${this.player.getAnimationState()}`,
       `tile: ${Math.floor(playerWorld.x)}, ${Math.floor(playerWorld.y)}`,
@@ -223,7 +311,41 @@ export class GameScene extends Phaser.Scene {
       `path length: ${this.player.getPathLength()}`,
       `destination: ${destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none'}`,
       `goal: ${finalDestination ? `${finalDestination.x.toFixed(2)}, ${finalDestination.y.toFixed(2)}` : 'none'}`,
+      `visible tiles: ${this.visibleTiles.size}`,
+      `search budget: ${this.getPathSearchBudget()} (${PATH_SEARCH_BUDGET_MULTIPLIER.toFixed(1)}x)`,
       `path status: ${this.pathStatus}`,
+      `interaction: ${this.interactionStatus}`,
+      `gold: ${this.gold}  potions: ${this.potions}  keys: ${this.keys}`,
+    ])
+  }
+
+  private drawDialogueUi(width: number, height: number): void {
+    if (!this.activeDialogue) {
+      this.dialogueBox.setVisible(false)
+      this.dialogueText.setVisible(false)
+      return
+    }
+
+    const padding = 20
+    const boxWidth = Math.min(640, width - 32)
+    const boxHeight = 132
+    const x = 16
+    const y = height - boxHeight - 16
+    const line = this.activeDialogue.script.lines[this.activeDialogue.lineIndex] ?? ''
+
+    this.dialogueBox.setVisible(true)
+    this.dialogueBox.setPosition(x, y)
+    this.dialogueBox.setSize(boxWidth, boxHeight)
+
+    this.dialogueText.setVisible(true)
+    this.dialogueText.setPosition(x + padding, y + padding)
+    this.dialogueText.setWordWrapWidth(boxWidth - padding * 2)
+    this.dialogueText.setText([
+      this.activeDialogue.script.speaker,
+      '',
+      line,
+      '',
+      '[E] next',
     ])
   }
 
@@ -303,21 +425,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyPathToTile(targetCell: { x: number; y: number }, successStatus: string): boolean {
-    const path = this.findPathToTile(targetCell)
-    if (!path) {
+    const result = this.findPathToTile(targetCell)
+    if (!result.path) {
       this.player.clearDestination()
-      this.pathStatus = 'path failed: no route'
+      this.pathStatus = result.exhaustedSearchBudget
+        ? `path failed: search budget exceeded (${result.visitedNodes})`
+        : 'path failed: no route'
       return false
     }
 
-    if (path.length <= 1) {
+    if (result.path.length <= 1) {
       this.player.clearDestination()
       this.pathStatus = 'already at target'
       return false
     }
 
-    this.player.setPath(path.slice(1).map(node => cellCenter(node.x, node.y)))
-    this.pathStatus = `${successStatus} (${path.length - 1} nodes)`
+    this.player.setPath(result.path.slice(1).map(node => cellCenter(node.x, node.y)))
+    this.pathStatus = `${successStatus} (${result.path.length - 1} nodes / budget ${this.getPathSearchBudget()})`
     return true
   }
 
@@ -351,7 +475,70 @@ export class GameScene extends Phaser.Scene {
       width: this.dungeon.width,
       height: this.dungeon.height,
       isWalkable: (x, y) => this.canOccupyCell(x, y),
+      maxVisitedNodes: this.getPathSearchBudget(),
     })
+  }
+
+  private getPathSearchBudget(): number {
+    return Math.max(
+      Math.ceil(this.visibleTiles.size * PATH_SEARCH_BUDGET_MULTIPLIER),
+      MIN_PATH_SEARCH_BUDGET
+    )
+  }
+
+  private refreshVisibility(): void {
+    const current = this.player.getMapPosition()
+    const originX = Phaser.Math.Clamp(Math.floor(current.x), 0, this.dungeon.width - 1)
+    const originY = Phaser.Math.Clamp(Math.floor(current.y), 0, this.dungeon.height - 1)
+    const visibleTiles = new Set<string>()
+
+    for (let y = originY - VISIBILITY_RADIUS; y <= originY + VISIBILITY_RADIUS; y++) {
+      for (let x = originX - VISIBILITY_RADIUS; x <= originX + VISIBILITY_RADIUS; x++) {
+        if (x < 0 || x >= this.dungeon.width || y < 0 || y >= this.dungeon.height) {
+          continue
+        }
+
+        const distance = Phaser.Math.Distance.Between(originX, originY, x, y)
+        if (distance > VISIBILITY_RADIUS) {
+          continue
+        }
+
+        if (this.hasLineOfSight(originX, originY, x, y)) {
+          visibleTiles.add(tileKey(x, y))
+        }
+      }
+    }
+
+    visibleTiles.add(tileKey(originX, originY))
+    this.visibleTiles = visibleTiles
+  }
+
+  private hasLineOfSight(fromX: number, fromY: number, toX: number, toY: number): boolean {
+    let x = fromX
+    let y = fromY
+    const dx = Math.abs(toX - fromX)
+    const dy = Math.abs(toY - fromY)
+    const stepX = fromX < toX ? 1 : -1
+    const stepY = fromY < toY ? 1 : -1
+    let error = dx - dy
+
+    while (x !== toX || y !== toY) {
+      if (!(x === fromX && y === fromY) && !this.dungeon.isWalkable(x, y)) {
+        return false
+      }
+
+      const doubledError = error * 2
+      if (doubledError > -dy) {
+        error -= dy
+        x += stepX
+      }
+      if (doubledError < dx) {
+        error += dx
+        y += stepY
+      }
+    }
+
+    return this.dungeon.isWalkable(toX, toY)
   }
 
   private pointerToTile(screenX: number, screenY: number): { x: number; y: number } | null {
@@ -378,5 +565,249 @@ export class GameScene extends Phaser.Scene {
     }
 
     return (gx + gy) % 2 === 0 ? 'tile-a' : 'tile-b'
+  }
+
+  private drawInteractables(playerScreen: IsoPoint, width: number, height: number): void {
+    const nearby = this.getNearbyInteractable()
+
+    for (const interactable of this.interactables) {
+      const screen = worldToScreen(cellCenter(interactable.tileX, interactable.tileY))
+      const sx = screen.x - playerScreen.x + width / 2
+      const sy = screen.y - playerScreen.y + height / 2 - 18
+
+      interactable.image.setVisible(true)
+      interactable.image.setPosition(sx, sy)
+      interactable.image.setDepth(500 + interactable.tileX + interactable.tileY)
+      interactable.image.setAlpha(interactable.used ? 0.45 : 1)
+      interactable.image.setScale(nearby?.id === interactable.id ? 1.08 : 1)
+    }
+  }
+
+  private generateFloor(resetFloorIndex: boolean): void {
+    this.dungeon = new BSPDungeon(80, 80)
+    this.dungeon.generate()
+
+    const start = this.dungeon.getStartPosition()
+    const spawn = cellCenter(start.x, start.y)
+    this.player.clearDestination()
+    this.player.setMapPosition(spawn.x, spawn.y)
+    this.rebuildInteractables(start.x, start.y)
+    this.refreshVisibility()
+
+    if (resetFloorIndex) {
+      this.floorIndex = 1
+      this.interactionStatus = 'entered floor 1'
+      return
+    }
+
+    this.floorIndex += 1
+    this.interactionStatus = `entered floor ${this.floorIndex}`
+  }
+
+  private rebuildInteractables(startX: number, startY: number): void {
+    for (const interactable of this.interactables) {
+      interactable.image.destroy()
+    }
+
+    this.interactables = []
+    const rooms = this.dungeon.getRooms()
+    const candidateRooms = rooms.filter(room => !(room.centerX === startX && room.centerY === startY))
+
+    const stairRoom = candidateRooms[candidateRooms.length - 1]
+    if (stairRoom) {
+      this.interactables.push(this.createInteractable('stairs', stairRoom.centerX, stairRoom.centerY))
+    }
+
+    for (let index = 0; index < Math.min(2, candidateRooms.length - 1); index++) {
+      const room = candidateRooms[index]
+      this.interactables.push(this.createInteractable(index === 0 ? 'chest' : 'locked-chest', room.centerX, room.centerY))
+    }
+
+    const firstChest = this.interactables.find(interactable => interactable.kind === 'chest')
+    if (firstChest) {
+      firstChest.reward = { kind: 'key', amount: 1 }
+    }
+
+    const npcRoom = candidateRooms.find(room =>
+      !this.interactables.some(interactable => interactable.tileX === room.centerX && interactable.tileY === room.centerY)
+    )
+    if (npcRoom) {
+      this.interactables.push(this.createInteractable('npc', npcRoom.centerX, npcRoom.centerY))
+    }
+  }
+
+  private createInteractable(kind: InteractableKind, tileX: number, tileY: number): Interactable {
+    const key = kind === 'chest'
+      ? 'interactable-chest'
+      : kind === 'locked-chest'
+        ? 'interactable-locked-chest'
+      : kind === 'stairs'
+        ? 'interactable-stairs'
+        : 'interactable-npc'
+    return {
+      id: `${kind}-${tileX}-${tileY}`,
+      kind,
+      tileX,
+      tileY,
+      image: this.add.image(-9999, -9999, key),
+      used: false,
+      reward: kind === 'chest' || kind === 'locked-chest' ? this.rollChestReward() : undefined,
+      dialogue: kind === 'npc'
+        ? {
+            speaker: 'Caretaker',
+            lines: [
+              'You are still learning this place. Do not trust the shortest road.',
+              'Open the chests if you want supplies. The locked one needs a key.',
+              'When you are ready, take the stairs and keep moving downward.',
+            ],
+          }
+        : undefined,
+    }
+  }
+
+  private tryInteract(): void {
+    if (this.activeDialogue) {
+      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+        this.advanceDialogue()
+      }
+      return
+    }
+
+    if (!Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      const nearby = this.getNearbyInteractable()
+      this.interactionStatus = nearby
+        ? `press E: ${nearby.kind}${nearby.used ? ' (used)' : ''}`
+        : 'none'
+      return
+    }
+
+    const interactable = this.getNearbyInteractable()
+    if (!interactable) {
+      this.interactionStatus = 'nothing to interact with'
+      return
+    }
+
+    if (interactable.kind === 'chest' || interactable.kind === 'locked-chest') {
+      if (interactable.used) {
+        this.interactionStatus = 'chest already opened'
+        return
+      }
+
+      if (interactable.kind === 'locked-chest' && this.keys <= 0) {
+        this.interactionStatus = 'locked chest: need key'
+        return
+      }
+
+      if (interactable.kind === 'locked-chest') {
+        this.keys -= 1
+      }
+
+      interactable.used = true
+      this.applyChestReward(interactable.reward, interactable.kind === 'locked-chest')
+      return
+    }
+
+    if (interactable.kind === 'npc') {
+      this.startDialogue(interactable)
+      return
+    }
+
+    this.generateFloor(false)
+  }
+
+  private getNearbyInteractable(): Interactable | null {
+    const current = this.player.getMapPosition()
+    let nearest: Interactable | null = null
+    let nearestDistance = Number.POSITIVE_INFINITY
+
+    for (const interactable of this.interactables) {
+      const center = cellCenter(interactable.tileX, interactable.tileY)
+      const distance = Phaser.Math.Distance.Between(current.x, current.y, center.x, center.y)
+      if (distance > INTERACTION_RANGE || distance >= nearestDistance) {
+        continue
+      }
+
+      nearest = interactable
+      nearestDistance = distance
+    }
+
+    return nearest
+  }
+
+  private startDialogue(interactable: Interactable): void {
+    if (!interactable.dialogue) {
+      this.interactionStatus = 'npc has nothing to say'
+      return
+    }
+
+    this.player.clearDestination()
+    this.activeDialogue = {
+      interactableId: interactable.id,
+      script: interactable.dialogue,
+      lineIndex: 0,
+    }
+    this.interactionStatus = `talking to ${interactable.dialogue.speaker}`
+  }
+
+  private advanceDialogue(): void {
+    if (!this.activeDialogue) {
+      return
+    }
+
+    const nextIndex = this.activeDialogue.lineIndex + 1
+    if (nextIndex >= this.activeDialogue.script.lines.length) {
+      this.interactionStatus = `finished talking to ${this.activeDialogue.script.speaker}`
+      this.activeDialogue = null
+      return
+    }
+
+    this.activeDialogue = {
+      ...this.activeDialogue,
+      lineIndex: nextIndex,
+    }
+  }
+
+  private rollChestReward(): ChestReward {
+    const roll = Math.random()
+    if (roll < 0.55) {
+      return {
+        kind: 'gold',
+        amount: Phaser.Math.Between(8, 22),
+      }
+    }
+
+    if (roll < 0.85) {
+      return {
+        kind: 'potion',
+        amount: 1,
+      }
+    }
+
+    return {
+      kind: 'key',
+      amount: 1,
+    }
+  }
+
+  private applyChestReward(reward?: ChestReward, wasLocked: boolean = false): void {
+    if (!reward) {
+      this.interactionStatus = wasLocked ? 'unlocked chest: empty' : 'opened empty chest'
+      return
+    }
+
+    if (reward.kind === 'gold') {
+      this.gold += reward.amount
+      this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${reward.amount} gold`
+      return
+    }
+
+    if (reward.kind === 'potion') {
+      this.potions += reward.amount
+      this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${reward.amount} potion`
+      return
+    }
+
+    this.keys += reward.amount
+    this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${reward.amount} key`
   }
 }
