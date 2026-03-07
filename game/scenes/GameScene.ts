@@ -6,6 +6,7 @@ import {
   cellCenter,
   HALF_TILE_HEIGHT,
   HALF_TILE_WIDTH,
+  type IsoPoint,
   screenToWorld,
   TILE_HEIGHT,
   TILE_WIDTH,
@@ -19,6 +20,7 @@ export class GameScene extends Phaser.Scene {
   private player!: Player
   private dungeon!: BSPDungeon
   private tilePool: Phaser.GameObjects.Image[] = []
+  private pathGraphics!: Phaser.GameObjects.Graphics
   private inputVector = new Phaser.Math.Vector2()
   private hoverMarker!: Phaser.GameObjects.Ellipse
   private hudText!: Phaser.GameObjects.Text
@@ -40,6 +42,9 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < POOL_SIZE; i++) {
       this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
     }
+
+    this.pathGraphics = this.add.graphics()
+    this.pathGraphics.setDepth(9996)
 
     this.player = new Player(this)
     const start = this.dungeon.getStartPosition()
@@ -188,6 +193,8 @@ export class GameScene extends Phaser.Scene {
       this.tilePool[poolIdx].setPosition(-9999, -9999)
     }
 
+    this.drawPath(playerWorld, playerScreen, width, height)
+
     const hovered = this.pointerToTile(this.input.activePointer.x, this.input.activePointer.y)
     if (hovered && this.dungeon.isWalkable(hovered.x, hovered.y)) {
       const marker = worldToScreen(cellCenter(hovered.x, hovered.y))
@@ -214,6 +221,46 @@ export class GameScene extends Phaser.Scene {
       `path length: ${this.player.getPathLength()}`,
       `destination: ${destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none'}`,
     ])
+  }
+
+  private drawPath(
+    playerWorld: IsoPoint,
+    playerScreen: IsoPoint,
+    width: number,
+    height: number
+  ) {
+    const points = this.player.getPathPoints()
+    this.pathGraphics.clear()
+
+    if (points.length === 0) {
+      return
+    }
+
+    const projected = [playerWorld, ...points].map(point => {
+      const screen = worldToScreen(point)
+      return new Phaser.Math.Vector2(
+        screen.x - playerScreen.x + width / 2,
+        screen.y - playerScreen.y + height / 2
+      )
+    })
+
+    this.pathGraphics.lineStyle(2, 0xfbbf24, 0.9)
+    this.pathGraphics.beginPath()
+    this.pathGraphics.moveTo(projected[0].x, projected[0].y)
+
+    for (let index = 1; index < projected.length; index++) {
+      this.pathGraphics.lineTo(projected[index].x, projected[index].y)
+    }
+
+    this.pathGraphics.strokePath()
+
+    for (let index = 1; index < projected.length; index++) {
+      const point = projected[index]
+      this.pathGraphics.fillStyle(index === projected.length - 1 ? 0xf97316 : 0xf8fafc, 0.95)
+      this.pathGraphics.fillCircle(point.x, point.y, index === projected.length - 1 ? 5 : 4)
+      this.pathGraphics.lineStyle(1, 0x111827, 0.8)
+      this.pathGraphics.strokeCircle(point.x, point.y, index === projected.length - 1 ? 5 : 4)
+    }
   }
 
   private readInputVector(): Phaser.Math.Vector2 {
