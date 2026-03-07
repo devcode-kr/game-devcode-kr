@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
+import { findAStarPath } from '../pathfinding/AStar'
 import {
   cellCenter,
   HALF_TILE_HEIGHT,
@@ -79,8 +80,25 @@ export class GameScene extends Phaser.Scene {
         return
       }
 
-      const destination = cellCenter(targetCell.x, targetCell.y)
-      this.player.setDestination(destination.x, destination.y)
+      const current = this.player.getMapPosition()
+      const startTile = {
+        x: Phaser.Math.Clamp(Math.floor(current.x), 0, this.dungeon.width - 1),
+        y: Phaser.Math.Clamp(Math.floor(current.y), 0, this.dungeon.height - 1),
+      }
+      const path = findAStarPath(startTile, targetCell, {
+        width: this.dungeon.width,
+        height: this.dungeon.height,
+        isWalkable: (x, y) => this.dungeon.isWalkable(x, y),
+      })
+
+      if (!path || path.length <= 1) {
+        this.player.clearDestination()
+        return
+      }
+
+      this.player.setPath(
+        path.slice(1).map(node => cellCenter(node.x, node.y))
+      )
     })
 
     this.drawDungeon(false)
@@ -188,11 +206,12 @@ export class GameScene extends Phaser.Scene {
     this.hudText.setText([
       'Movement Phase 1',
       'WASD / Arrows: manual move',
-      'LMB: straight click move',
+      'LMB: A* click move',
       `mode: ${this.player.getMovementMode()}`,
       `animation: ${this.player.getAnimationState()}`,
       `tile: ${Math.floor(playerWorld.x)}, ${Math.floor(playerWorld.y)}`,
       `world: ${playerWorld.x.toFixed(2)}, ${playerWorld.y.toFixed(2)}`,
+      `path length: ${this.player.getPathLength()}`,
       `destination: ${destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none'}`,
     ])
   }
