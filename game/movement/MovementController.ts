@@ -24,6 +24,7 @@ export class MovementController {
   private readonly facing = new Phaser.Math.Vector2(0, 1)
   private readonly velocity = new Phaser.Math.Vector2()
   private destination: Phaser.Math.Vector2 | null = null
+  private finalDestination: Phaser.Math.Vector2 | null = null
   private pathQueue: Phaser.Math.Vector2[] = []
   private mode: MovementMode = 'idle'
   private readonly config: MovementControllerConfig
@@ -56,20 +57,29 @@ export class MovementController {
     return this.destination?.clone() ?? null
   }
 
+  getFinalDestination(): Phaser.Math.Vector2 | null {
+    return this.finalDestination?.clone() ?? null
+  }
+
   setDestination(x: number, y: number): void {
     this.pathQueue = []
     this.destination = new Phaser.Math.Vector2(x, y)
+    this.finalDestination = this.destination.clone()
     this.mode = 'click-move'
   }
 
   setPath(points: Array<{ x: number; y: number }>): void {
     this.pathQueue = points.map(point => new Phaser.Math.Vector2(point.x, point.y))
+    this.finalDestination = points.length > 0
+      ? new Phaser.Math.Vector2(points[points.length - 1].x, points[points.length - 1].y)
+      : null
     this.destination = this.pathQueue.shift() ?? null
     this.mode = this.destination ? 'click-move' : 'idle'
   }
 
   clearDestination(): void {
     this.destination = null
+    this.finalDestination = null
     this.pathQueue = []
     if (this.mode === 'click-move') {
       this.mode = 'idle'
@@ -123,12 +133,7 @@ export class MovementController {
 
     if (Phaser.Math.Distance.Between(x, y, this.destination.x, this.destination.y) <= this.config.arrivalThreshold) {
       this.position.copy(this.destination)
-      this.destination = this.pathQueue.shift() ?? null
-
-      if (!this.destination) {
-        this.velocity.set(0, 0)
-        this.mode = 'idle'
-      }
+      this.advancePath()
     }
   }
 
@@ -138,6 +143,7 @@ export class MovementController {
     if (manualDirection.lengthSq() > 0) {
       resolved.copy(manualDirection).normalize()
       this.destination = null
+      this.finalDestination = null
       this.pathQueue = []
       this.mode = 'manual'
       return resolved
@@ -150,8 +156,7 @@ export class MovementController {
     const toDestination = this.destination.clone().subtract(this.position)
     if (toDestination.length() <= this.config.arrivalThreshold) {
       this.position.copy(this.destination)
-      this.destination = null
-      this.mode = 'idle'
+      this.advancePath()
       return resolved
     }
 
@@ -165,6 +170,16 @@ export class MovementController {
       velocity: this.velocity.clone(),
       mode: this.mode,
       hasDestination: this.destination !== null,
+    }
+  }
+
+  private advancePath(): void {
+    this.destination = this.pathQueue.shift() ?? null
+
+    if (!this.destination) {
+      this.finalDestination = null
+      this.velocity.set(0, 0)
+      this.mode = 'idle'
     }
   }
 }
