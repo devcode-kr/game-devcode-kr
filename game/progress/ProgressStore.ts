@@ -1,3 +1,5 @@
+import type { InventoryState } from '../items/Inventory'
+
 export interface JourneyLog {
   currentChapter: string
   steps: {
@@ -23,8 +25,11 @@ export interface AchievementState {
 export interface ProgressSnapshot {
   floorIndex: number
   gold: number
-  potions: number
-  keys: number
+  health?: number
+  maxHealth?: number
+  potions?: number
+  keys?: number
+  inventory?: InventoryState
   journeyLog: JourneyLog
   achievements: AchievementState
 }

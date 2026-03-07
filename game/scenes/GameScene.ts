@@ -1,6 +1,16 @@
 import * as Phaser from 'phaser'
 import { Player } from '../entities/Player'
+import {
+  addItemInstance,
+  countItemsByDefinition,
+  createEmptyInventory,
+  createItemInstance,
+  getInventoryStackViews,
+  removeSingleItemByDefinition,
+  type InventoryState,
+} from '../items/Inventory'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
+import { getItemDefinition } from '../items/ItemCatalog'
 import {
   resolveNpcDialogue,
   type DialogueScript,
@@ -32,6 +42,12 @@ const PATH_SEARCH_BUDGET_MULTIPLIER = 1.5
 const MIN_PATH_SEARCH_BUDGET = 8
 const INTERACTION_RANGE = 1.1
 const PROGRESS_STORAGE_KEY = 'game-devcode-kr/progress'
+const INVENTORY_COLS = 6
+const INVENTORY_ROWS = 8
+const DEFAULT_MAX_HEALTH = 100
+const DEBUG_DAMAGE_AMOUNT = 25
+const TRAP_DAMAGE_AMOUNT = 20
+const TRAP_REARM_MS = 1600
 
 type InteractableKind = 'chest' | 'locked-chest' | 'stairs' | 'npc'
 
@@ -54,6 +70,14 @@ interface ChestReward {
   amount: number
 }
 
+interface Trap {
+  id: string
+  tileX: number
+  tileY: number
+  image: Phaser.GameObjects.Image
+  lastTriggeredAt: number
+}
+
 function tileKey(x: number, y: number): string {
   return `${x},${y}`
 }
@@ -66,6 +90,7 @@ export class GameScene extends Phaser.Scene {
   private inputVector = new Phaser.Math.Vector2()
   private visibleTiles = new Set<string>()
   private interactables: Interactable[] = []
+  private traps: Trap[] = []
   private hoverMarker!: Phaser.GameObjects.Ellipse
   private hudText!: Phaser.GameObjects.Text
   private dialogueBox!: Phaser.GameObjects.Rectangle
@@ -74,8 +99,9 @@ export class GameScene extends Phaser.Scene {
   private interactionStatus = 'none'
   private floorIndex = 1
   private gold = 0
-  private potions = 0
-  private keys = 0
+  private health = DEFAULT_MAX_HEALTH
+  private maxHealth = DEFAULT_MAX_HEALTH
+  private inventory: InventoryState = createEmptyInventory(INVENTORY_COLS, INVENTORY_ROWS)
   private activeDialogue: { interactableId: string; script: DialogueScript; lineIndex: number } | null = null
   private journeyLog: JourneyLog = {
     currentChapter: 'Entered the dungeon',
@@ -101,6 +127,8 @@ export class GameScene extends Phaser.Scene {
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private interactKey!: Phaser.Input.Keyboard.Key
+  private usePotionKey!: Phaser.Input.Keyboard.Key
+  private debugDamageKey!: Phaser.Input.Keyboard.Key
 
   constructor() {
     super({ key: 'GameScene' })
@@ -161,6 +189,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.cursors = this.input.keyboard!.createCursorKeys()
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
+    this.usePotionKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
+    this.debugDamageKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.H)
 
     this.loadProgress()
     this.generateFloor(true)
@@ -219,6 +249,9 @@ export class GameScene extends Phaser.Scene {
 
     this.player.commitMapPosition(nextX, nextY)
     this.refreshVisibility()
+    this.tryTriggerTrap()
+    this.tryApplyDebugDamage()
+    this.tryUsePotion()
     this.tryInteract()
 
     if (input.lengthSq() > 0) {
@@ -261,6 +294,7 @@ export class GameScene extends Phaser.Scene {
     this.bakeInteractableTexture('interactable-locked-chest', 0x5b3a1e, 0x93c5fd)
     this.bakeInteractableTexture('interactable-stairs', 0x94a3b8, 0xe2e8f0)
     this.bakeInteractableTexture('interactable-npc', 0x0f766e, 0x99f6e4)
+    this.bakeInteractableTexture('trap-spike', 0x7f1d1d, 0xfca5a5)
   }
 
   private bakeInteractableTexture(key: string, fill: number, stroke: number): void {
@@ -309,6 +343,7 @@ export class GameScene extends Phaser.Scene {
       this.tilePool[poolIdx].setPosition(-9999, -9999)
     }
 
+    this.drawTraps(playerScreen, width, height)
     this.drawInteractables(playerScreen, width, height)
     this.drawPath(playerWorld, playerScreen, width, height)
 
@@ -329,11 +364,14 @@ export class GameScene extends Phaser.Scene {
 
     const destination = this.player.getDestination()
     const finalDestination = this.player.getFinalDestination()
+    const inventorySummary = this.getInventorySummaryText()
     this.hudText.setText([
       'Movement Phase 1',
       'WASD / Arrows: manual move',
       'LMB: A* click move',
       'E: interact',
+      'Q: use potion',
+      'H: debug damage',
       `floor: ${this.floorIndex}`,
       `mode: ${this.player.getMovementMode()}`,
       `animation: ${this.player.getAnimationState()}`,
@@ -346,7 +384,9 @@ export class GameScene extends Phaser.Scene {
       `search budget: ${this.getPathSearchBudget()} (${PATH_SEARCH_BUDGET_MULTIPLIER.toFixed(1)}x)`,
       `path status: ${this.pathStatus}`,
       `interaction: ${this.interactionStatus}`,
-      `gold: ${this.gold}  potions: ${this.potions}  keys: ${this.keys}`,
+      `health: ${this.health}/${this.maxHealth}`,
+      `gold: ${this.gold}  potions: ${this.getItemCount('potion_minor')}  keys: ${this.getItemCount('utility_key')}`,
+      `inventory: ${inventorySummary}`,
       `journey: ${this.journeyLog.currentChapter}`,
       `achievements: ${this.achievements.unlocked.length > 0 ? this.achievements.unlocked.join(', ') : 'none'}`,
     ])
@@ -616,6 +656,25 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawTraps(playerScreen: IsoPoint, width: number, height: number): void {
+    for (const trap of this.traps) {
+      const screen = worldToScreen(cellCenter(trap.tileX, trap.tileY))
+      const sx = screen.x - playerScreen.x + width / 2
+      const sy = screen.y - playerScreen.y + height / 2 - 6
+      const cooldownProgress = Phaser.Math.Clamp(
+        (this.time.now - trap.lastTriggeredAt) / TRAP_REARM_MS,
+        0.25,
+        1
+      )
+
+      trap.image.setVisible(true)
+      trap.image.setPosition(sx, sy)
+      trap.image.setDepth(210 + trap.tileX + trap.tileY)
+      trap.image.setAlpha(cooldownProgress)
+      trap.image.setScale(0.8 + cooldownProgress * 0.25)
+    }
+  }
+
   private generateFloor(resetFloorIndex: boolean): void {
     this.dungeon = new BSPDungeon(80, 80)
     this.dungeon.generate()
@@ -653,8 +712,12 @@ export class GameScene extends Phaser.Scene {
     for (const interactable of this.interactables) {
       interactable.image.destroy()
     }
+    for (const trap of this.traps) {
+      trap.image.destroy()
+    }
 
     this.interactables = []
+    this.traps = []
     const rooms = this.dungeon.getRooms()
     const candidateRooms = rooms.filter(room => !(room.centerX === startX && room.centerY === startY))
 
@@ -679,6 +742,8 @@ export class GameScene extends Phaser.Scene {
     if (npcRoom) {
       this.interactables.push(this.createInteractable('npc', npcRoom.centerX, npcRoom.centerY))
     }
+
+    this.rebuildTraps(startX, startY)
   }
 
   private createInteractable(kind: InteractableKind, tileX: number, tileY: number): Interactable {
@@ -734,13 +799,13 @@ export class GameScene extends Phaser.Scene {
         return
       }
 
-      if (interactable.kind === 'locked-chest' && this.keys <= 0) {
+      if (interactable.kind === 'locked-chest' && this.getItemCount('utility_key') <= 0) {
         this.interactionStatus = 'locked chest: need key'
         return
       }
 
       if (interactable.kind === 'locked-chest') {
-        this.keys -= 1
+        removeSingleItemByDefinition(this.inventory, 'utility_key')
         this.journeyLog.steps.openedLockedChest = true
         this.journeyLog.currentChapter = 'Opened a locked chest'
         this.achievements.counters.lockedChestsOpened += 1
@@ -762,6 +827,70 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.generateFloor(false)
+  }
+
+  private tryUsePotion(): void {
+    if (this.activeDialogue || !Phaser.Input.Keyboard.JustDown(this.usePotionKey)) {
+      return
+    }
+
+    if (this.health >= this.maxHealth) {
+      this.interactionStatus = 'health already full'
+      return
+    }
+
+    const removedItem = removeSingleItemByDefinition(this.inventory, 'potion_minor')
+    if (!removedItem) {
+      this.interactionStatus = 'no potion to use'
+      return
+    }
+
+    const potionDefinition = getItemDefinition('potion_minor')
+    const healAmount = potionDefinition.healAmount ?? 0
+    const previousHealth = this.health
+    this.health = Math.min(this.maxHealth, this.health + healAmount)
+    const healed = this.health - previousHealth
+
+    this.interactionStatus = `used ${potionDefinition.name}: +${healed} health`
+    this.saveProgress()
+  }
+
+  private tryTriggerTrap(): void {
+    if (this.health <= 0) {
+      return
+    }
+
+    const current = this.player.getMapPosition()
+    const tileX = Phaser.Math.Clamp(Math.floor(current.x), 0, this.dungeon.width - 1)
+    const tileY = Phaser.Math.Clamp(Math.floor(current.y), 0, this.dungeon.height - 1)
+    const trap = this.traps.find(candidate => candidate.tileX === tileX && candidate.tileY === tileY)
+    if (!trap) {
+      return
+    }
+
+    if (this.time.now - trap.lastTriggeredAt < TRAP_REARM_MS) {
+      return
+    }
+
+    trap.lastTriggeredAt = this.time.now
+    this.health = Math.max(0, this.health - TRAP_DAMAGE_AMOUNT)
+    this.interactionStatus = `triggered trap: -${TRAP_DAMAGE_AMOUNT} health`
+    this.saveProgress()
+  }
+
+  private tryApplyDebugDamage(): void {
+    if (this.activeDialogue || !Phaser.Input.Keyboard.JustDown(this.debugDamageKey)) {
+      return
+    }
+
+    if (this.health <= 0) {
+      this.interactionStatus = 'already at 0 health'
+      return
+    }
+
+    this.health = Math.max(0, this.health - DEBUG_DAMAGE_AMOUNT)
+    this.interactionStatus = `took ${DEBUG_DAMAGE_AMOUNT} damage`
+    this.saveProgress()
   }
 
   private getNearbyInteractable(): Interactable | null {
@@ -865,18 +994,24 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    if (reward.kind === 'potion') {
-      this.potions += reward.amount
-      this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${reward.amount} potion`
+    const itemDefinitionId = reward.kind === 'potion' ? 'potion_minor' : 'utility_key'
+    const addedCount = this.addInventoryItemBatch(itemDefinitionId, reward.amount)
+    const itemName = getItemDefinition(itemDefinitionId).name
+
+    if (reward.kind === 'key' && addedCount > 0) {
+      this.journeyLog.steps.foundKey = true
+      this.journeyLog.currentChapter = 'Found a key'
+      this.achievements.counters.keysCollected += addedCount
+      this.unlockAchievement('key-bearer', this.achievements.counters.keysCollected >= 1, 'Key Bearer')
+    }
+
+    if (addedCount === 0) {
+      this.interactionStatus = `inventory full: could not store ${itemName}`
       return
     }
 
-    this.keys += reward.amount
-    this.journeyLog.steps.foundKey = true
-    this.journeyLog.currentChapter = 'Found a key'
-    this.achievements.counters.keysCollected += reward.amount
-    this.unlockAchievement('key-bearer', this.achievements.counters.keysCollected >= 1, 'Key Bearer')
-    this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${reward.amount} key`
+    const storedSuffix = addedCount < reward.amount ? ` (${addedCount}/${reward.amount} stored)` : ''
+    this.interactionStatus = `${wasLocked ? 'unlocked chest' : 'opened chest'}: +${addedCount} ${itemName}${storedSuffix}`
   }
 
   private unlockAchievement(_id: string, condition: boolean, label: string): void {
@@ -907,8 +1042,9 @@ export class GameScene extends Phaser.Scene {
     return {
       floorIndex: this.floorIndex,
       gold: this.gold,
-      potions: this.potions,
-      keys: this.keys,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      inventory: this.inventory,
       journeyLog: this.journeyLog,
       achievements: this.achievements,
     }
@@ -917,9 +1053,91 @@ export class GameScene extends Phaser.Scene {
   private applyProgressSnapshot(snapshot: ProgressSnapshot): void {
     this.floorIndex = snapshot.floorIndex
     this.gold = snapshot.gold
-    this.potions = snapshot.potions
-    this.keys = snapshot.keys
+    this.health = snapshot.health ?? DEFAULT_MAX_HEALTH
+    this.maxHealth = snapshot.maxHealth ?? DEFAULT_MAX_HEALTH
+    this.inventory = snapshot.inventory ?? this.createInventoryFromLegacySnapshot(snapshot)
     this.journeyLog = snapshot.journeyLog
     this.achievements = snapshot.achievements
+  }
+
+  private createInventoryFromLegacySnapshot(snapshot: ProgressSnapshot): InventoryState {
+    const inventory = createEmptyInventory(INVENTORY_COLS, INVENTORY_ROWS)
+    const legacyKeys = snapshot.keys ?? 0
+    const legacyPotions = snapshot.potions ?? 0
+
+    for (let index = 0; index < legacyKeys; index++) {
+      addItemInstance(inventory, createItemInstance('utility_key'))
+    }
+
+    for (let index = 0; index < legacyPotions; index++) {
+      addItemInstance(inventory, createItemInstance('potion_minor'))
+    }
+
+    return inventory
+  }
+
+  private addInventoryItemBatch(itemDefinitionId: string, amount: number): number {
+    let addedCount = 0
+
+    for (let index = 0; index < amount; index++) {
+      const added = addItemInstance(this.inventory, createItemInstance(itemDefinitionId))
+      if (!added) {
+        break
+      }
+
+      addedCount += 1
+    }
+
+    return addedCount
+  }
+
+  private getItemCount(itemDefinitionId: string): number {
+    return countItemsByDefinition(this.inventory, itemDefinitionId)
+  }
+
+  private getInventorySummaryText(): string {
+    const stacks = getInventoryStackViews(this.inventory)
+    if (stacks.length === 0) {
+      return 'empty'
+    }
+
+    return stacks
+      .slice(0, 3)
+      .map(stack => `${stack.name} ${stack.count}/${stack.maxStack} @${stack.x},${stack.y}`)
+      .join(' | ')
+  }
+
+  private rebuildTraps(startX: number, startY: number): void {
+    const rooms = this.dungeon.getRooms()
+    const candidates = rooms
+      .flatMap(room => [
+        { x: room.centerX - 1, y: room.centerY },
+        { x: room.centerX + 1, y: room.centerY },
+      ])
+      .filter(candidate => {
+        if (!this.dungeon.isWalkable(candidate.x, candidate.y)) {
+          return false
+        }
+
+        if ((candidate.x === startX && candidate.y === startY) || this.isOccupiedTile(candidate.x, candidate.y)) {
+          return false
+        }
+
+        return true
+      })
+
+    for (const candidate of candidates.slice(0, 3)) {
+      this.traps.push({
+        id: `trap-${candidate.x}-${candidate.y}`,
+        tileX: candidate.x,
+        tileY: candidate.y,
+        image: this.add.image(-9999, -9999, 'trap-spike'),
+        lastTriggeredAt: -TRAP_REARM_MS,
+      })
+    }
+  }
+
+  private isOccupiedTile(tileX: number, tileY: number): boolean {
+    return this.interactables.some(interactable => interactable.tileX === tileX && interactable.tileY === tileY)
   }
 }
