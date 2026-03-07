@@ -1,0 +1,113 @@
+{
+  "sourcePromptId": "1f893114-92b8-4835-a9b1-9acb57ec5833",
+  "editPromptId": "ba43a909-7568-49b3-9dbe-a3d4c69d7aaf",
+  "sourceImage": {
+    "filename": "character_sheet_source_00001_.png",
+    "subfolder": "",
+    "type": "output"
+  },
+  "editImages": [
+    {
+      "filename": "character_sheet_qwen_00001_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00002_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00003_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00004_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00005_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00006_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00007_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00008_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00009_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00010_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00011_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00012_.png",
+      "subfolder": "",
+      "type": "output"
+    },
+    {
+      "filename": "character_sheet_qwen_00013_.png",
+      "subfolder": "",
+      "type": "output"
+    }
+  ],
+  "savedEditPaths": [
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-01.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-02.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-03.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-04.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-05.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-06.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-07.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-08.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-09.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-10.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-11.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-12.png",
+    "/home/eitetu/git/game-devcode-kr/public/assets/characters/generated/edit-13.png"
+  ],
+  "options": {
+    "sourceModel": "waiIllustriousSDXL_v160.safetensors",
+    "sourcePrompt": "full body fantasy action rpg character reference, sprite sheet source, single character, plain background, centered, readable silhouette, 2d game art",
+    "negativePrompt": "photorealistic, busy background, text, watermark, cropped, extra limbs, blurry",
+    "editPrompt": "turn this into a clean game sprite reference image, simplify background, improve silhouette readability, reduce noise, keep one centered character",
+    "width": 640,
+    "height": 640,
+    "seed": 0,
+    "sourceSteps": 12,
+    "sourceCfg": 6.5,
+    "sourceSampler": "dpmpp_2m",
+    "sourceScheduler": "karras",
+    "editSteps": 4,
+    "editCfg": 4,
+    "editSampler": "euler",
+    "editScheduler": "simple",
+    "qwenUnet": "qwen_image_edit_2511_fp8mixed.safetensors",
+    "qwenClip": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "qwenVae": "qwen_image_vae.safetensors",
+    "sourcePrefix": "character_sheet_source",
+    "editPrefix": "character_sheet_qwen"
+  }
+}

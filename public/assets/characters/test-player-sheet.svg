@@ -1,0 +1,492 @@
+<svg width="512" height="640" viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .outline { stroke: #1b1b1b; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .cloak { fill: #465a88; stroke: #1b1b1b; stroke-width: 2.5; }
+      .armor { fill: #97a8c7; stroke: #1b1b1b; stroke-width: 2.5; }
+      .skin { fill: #f1c7a1; stroke: #1b1b1b; stroke-width: 2.5; }
+      .boot { fill: #53433a; stroke: #1b1b1b; stroke-width: 2.5; }
+      .weapon { fill: #cfd8e3; stroke: #1b1b1b; stroke-width: 2; }
+    </style>
+  </defs>
+  <g transform="translate(0 0)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L50 94 L42 112 L22 112 L14 94 Z"/>
+    <ellipse class="armor" cx="32" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="35" r="9"/>
+    <path class="outline" d="M29 66 L19 86 M35 66 L45 86"/>
+    <path class="outline" d="M29 111 L28 122 M35 111 L36 122"/>
+    <rect class="boot" x="24" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="32" y="121" width="8" height="5" rx="1"/>
+    
+  
+  </g>
+  <g transform="translate(64 0)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 112 L24 112 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="35" r="9"/>
+    <path class="outline" d="M31 66 L21 86 M37 66 L51 86"/>
+    <path class="outline" d="M31 111 L29 122 M37 111 L39 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="35" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(128 0)">
+    <ellipse cx="35" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M23 48 L47 48 L52 94 L45 112 L25 112 L16 94 Z"/>
+    <ellipse class="armor" cx="35" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="35" cy="35" r="9"/>
+    <path class="outline" d="M32 66 L23 86 M38 66 L53 86"/>
+    <path class="outline" d="M32 111 L29 122 M38 111 L41 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="37" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(192 0)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 112 L24 112 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="35" r="9"/>
+    <path class="outline" d="M31 66 L21 86 M37 66 L51 86"/>
+    <path class="outline" d="M31 111 L29 122 M37 111 L39 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="35" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(256 0)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L49 94 L42 112 L22 112 L13 94 Z"/>
+    <ellipse class="armor" cx="32" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="35" r="9"/>
+    <path class="outline" d="M29 66 L17 86 M35 66 L47 86"/>
+    <path class="outline" d="M29 111 L28 122 M35 111 L36 122"/>
+    <rect class="boot" x="24" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="32" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(320 0)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 112 L20 112 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="35" r="9"/>
+    <path class="outline" d="M27 66 L17 86 M33 66 L39 86"/>
+    <path class="outline" d="M27 111 L25 122 M33 111 L35 122"/>
+    <rect class="boot" x="21" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(384 0)">
+    <ellipse cx="29" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M17 48 L41 48 L48 94 L39 112 L19 112 L12 94 Z"/>
+    <ellipse class="armor" cx="29" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="29" cy="35" r="9"/>
+    <path class="outline" d="M26 66 L15 86 M32 66 L37 86"/>
+    <path class="outline" d="M26 111 L23 122 M32 111 L35 122"/>
+    <rect class="boot" x="19" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(448 0)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 112 L20 112 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="35" r="9"/>
+    <path class="outline" d="M27 66 L17 86 M33 66 L39 86"/>
+    <path class="outline" d="M27 111 L25 122 M33 111 L35 122"/>
+    <rect class="boot" x="21" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(0 128)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L50 94 L42 113 L22 113 L14 94 Z"/>
+    <ellipse class="armor" cx="32" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="36" r="9"/>
+    <path class="outline" d="M29 67 L19 86 M35 67 L45 88"/>
+    <path class="outline" d="M29 111 L28 122 M35 111 L36 122"/>
+    <rect class="boot" x="24" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="32" y="121" width="8" height="5" rx="1"/>
+    
+  
+  </g>
+  <g transform="translate(64 128)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 113 L24 113 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="36" r="9"/>
+    <path class="outline" d="M31 67 L21 86 M37 67 L51 86"/>
+    <path class="outline" d="M31 111 L29 122 M37 111 L39 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="35" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(128 128)">
+    <ellipse cx="35" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M23 48 L47 48 L52 94 L45 113 L25 113 L16 94 Z"/>
+    <ellipse class="armor" cx="35" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="35" cy="36" r="9"/>
+    <path class="outline" d="M32 67 L23 86 M38 67 L53 86"/>
+    <path class="outline" d="M32 111 L29 122 M38 111 L41 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="37" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(192 128)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 113 L24 113 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="36" r="9"/>
+    <path class="outline" d="M31 67 L21 86 M37 67 L51 86"/>
+    <path class="outline" d="M31 111 L29 122 M37 111 L39 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="35" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(256 128)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L49 94 L42 113 L22 113 L13 94 Z"/>
+    <ellipse class="armor" cx="32" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="36" r="9"/>
+    <path class="outline" d="M29 67 L17 86 M35 67 L47 86"/>
+    <path class="outline" d="M29 111 L28 122 M35 111 L36 122"/>
+    <rect class="boot" x="24" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="32" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(320 128)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 113 L20 113 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="36" r="9"/>
+    <path class="outline" d="M27 67 L17 88 M33 67 L39 88"/>
+    <path class="outline" d="M27 111 L25 122 M33 111 L35 122"/>
+    <rect class="boot" x="21" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(384 128)">
+    <ellipse cx="29" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M17 48 L41 48 L48 94 L39 113 L19 113 L12 94 Z"/>
+    <ellipse class="armor" cx="29" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="29" cy="36" r="9"/>
+    <path class="outline" d="M26 67 L15 88 M32 67 L37 88"/>
+    <path class="outline" d="M26 111 L23 122 M32 111 L35 122"/>
+    <rect class="boot" x="19" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(448 128)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 113 L20 113 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="57" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="36" r="9"/>
+    <path class="outline" d="M27 67 L17 88 M33 67 L39 88"/>
+    <path class="outline" d="M27 111 L25 122 M33 111 L35 122"/>
+    <rect class="boot" x="21" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="72" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(0 256)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L50 94 L42 111 L22 111 L14 94 Z"/>
+    <ellipse class="armor" cx="32" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="35" r="9"/>
+    <path class="outline" d="M29 66 L19 92 M35 66 L45 80"/>
+    <path class="outline" d="M29 111 L20 124 M35 111 L44 119"/>
+    <rect class="boot" x="16" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="40" y="118" width="8" height="5" rx="1"/>
+    
+  
+  </g>
+  <g transform="translate(64 256)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 111 L24 111 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="35" r="9"/>
+    <path class="outline" d="M31 66 L21 92 M37 66 L51 92"/>
+    <path class="outline" d="M31 111 L21 124 M37 111 L47 119"/>
+    <rect class="boot" x="17" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="43" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(128 256)">
+    <ellipse cx="35" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M23 48 L47 48 L52 94 L45 111 L25 111 L16 94 Z"/>
+    <ellipse class="armor" cx="35" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="35" cy="35" r="9"/>
+    <path class="outline" d="M32 66 L23 92 M38 66 L53 92"/>
+    <path class="outline" d="M32 111 L21 124 M38 111 L49 119"/>
+    <rect class="boot" x="17" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="45" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(192 256)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 111 L24 111 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="35" r="9"/>
+    <path class="outline" d="M31 66 L21 92 M37 66 L51 92"/>
+    <path class="outline" d="M31 111 L21 124 M37 111 L47 119"/>
+    <rect class="boot" x="17" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="43" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(256 256)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L49 94 L42 111 L22 111 L13 94 Z"/>
+    <ellipse class="armor" cx="32" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="35" r="9"/>
+    <path class="outline" d="M29 66 L17 92 M35 66 L47 92"/>
+    <path class="outline" d="M29 111 L20 124 M35 111 L44 119"/>
+    <rect class="boot" x="16" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="40" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(320 256)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 111 L20 111 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="35" r="9"/>
+    <path class="outline" d="M27 66 L17 80 M33 66 L39 80"/>
+    <path class="outline" d="M27 111 L17 124 M33 111 L43 119"/>
+    <rect class="boot" x="13" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="39" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(384 256)">
+    <ellipse cx="29" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M17 48 L41 48 L48 94 L39 111 L19 111 L12 94 Z"/>
+    <ellipse class="armor" cx="29" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="29" cy="35" r="9"/>
+    <path class="outline" d="M26 66 L15 80 M32 66 L37 80"/>
+    <path class="outline" d="M26 111 L15 124 M32 111 L43 119"/>
+    <rect class="boot" x="11" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="39" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(448 256)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 111 L20 111 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="35" r="9"/>
+    <path class="outline" d="M27 66 L17 80 M33 66 L39 80"/>
+    <path class="outline" d="M27 111 L17 124 M33 111 L43 119"/>
+    <rect class="boot" x="13" y="123" width="8" height="5" rx="1"/>
+    <rect class="boot" x="39" y="118" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="67" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(0 384)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L50 94 L42 112 L22 112 L14 94 Z"/>
+    <ellipse class="armor" cx="32" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="34" r="9"/>
+    <path class="outline" d="M29 65 L19 85 M35 65 L45 85"/>
+    <path class="outline" d="M29 111 L28 122 M35 111 L36 122"/>
+    <rect class="boot" x="24" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="32" y="121" width="8" height="5" rx="1"/>
+    
+  
+  </g>
+  <g transform="translate(64 384)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 112 L24 112 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="34" r="9"/>
+    <path class="outline" d="M31 65 L21 85 M37 65 L51 85"/>
+    <path class="outline" d="M31 111 L29 122 M37 111 L39 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="35" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(128 384)">
+    <ellipse cx="35" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M23 48 L47 48 L52 94 L45 112 L25 112 L16 94 Z"/>
+    <ellipse class="armor" cx="35" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="35" cy="34" r="9"/>
+    <path class="outline" d="M32 65 L23 85 M38 65 L53 85"/>
+    <path class="outline" d="M32 111 L29 122 M38 111 L41 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="37" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(192 384)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 112 L24 112 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="34" r="9"/>
+    <path class="outline" d="M31 65 L21 85 M37 65 L51 85"/>
+    <path class="outline" d="M31 111 L29 122 M37 111 L39 122"/>
+    <rect class="boot" x="25" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="35" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(256 384)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L49 94 L42 112 L22 112 L13 94 Z"/>
+    <ellipse class="armor" cx="32" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="34" r="9"/>
+    <path class="outline" d="M29 65 L17 85 M35 65 L47 85"/>
+    <path class="outline" d="M29 111 L28 122 M35 111 L36 122"/>
+    <rect class="boot" x="24" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="32" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(320 384)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 112 L20 112 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="34" r="9"/>
+    <path class="outline" d="M27 65 L17 85 M33 65 L39 85"/>
+    <path class="outline" d="M27 111 L25 122 M33 111 L35 122"/>
+    <rect class="boot" x="21" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(384 384)">
+    <ellipse cx="29" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M17 48 L41 48 L48 94 L39 112 L19 112 L12 94 Z"/>
+    <ellipse class="armor" cx="29" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="29" cy="34" r="9"/>
+    <path class="outline" d="M26 65 L15 85 M32 65 L37 85"/>
+    <path class="outline" d="M26 111 L23 122 M32 111 L35 122"/>
+    <rect class="boot" x="19" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(448 384)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 112 L20 112 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="55" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="34" r="9"/>
+    <path class="outline" d="M27 65 L17 85 M33 65 L39 85"/>
+    <path class="outline" d="M27 111 L25 122 M33 111 L35 122"/>
+    <rect class="boot" x="21" y="121" width="8" height="5" rx="1"/>
+    <rect class="boot" x="31" y="121" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="71" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(0 512)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L50 94 L42 111 L22 111 L14 94 Z"/>
+    <ellipse class="armor" cx="32" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="35" r="9"/>
+    <path class="outline" d="M29 66 L19 80 M35 66 L45 92"/>
+    <path class="outline" d="M29 111 L36 119 M35 111 L28 124"/>
+    <rect class="boot" x="32" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="24" y="123" width="8" height="5" rx="1"/>
+    
+  
+  </g>
+  <g transform="translate(64 512)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 111 L24 111 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="35" r="9"/>
+    <path class="outline" d="M31 66 L21 80 M37 66 L51 80"/>
+    <path class="outline" d="M31 111 L37 119 M37 111 L31 124"/>
+    <rect class="boot" x="33" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="27" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(128 512)">
+    <ellipse cx="35" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M23 48 L47 48 L52 94 L45 111 L25 111 L16 94 Z"/>
+    <ellipse class="armor" cx="35" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="35" cy="35" r="9"/>
+    <path class="outline" d="M32 66 L23 80 M38 66 L53 80"/>
+    <path class="outline" d="M32 111 L37 119 M38 111 L33 124"/>
+    <rect class="boot" x="33" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="29" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(192 512)">
+    <ellipse cx="34" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M22 48 L46 48 L51 94 L44 111 L24 111 L15 94 Z"/>
+    <ellipse class="armor" cx="34" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="34" cy="35" r="9"/>
+    <path class="outline" d="M31 66 L21 80 M37 66 L51 80"/>
+    <path class="outline" d="M31 111 L37 119 M37 111 L31 124"/>
+    <rect class="boot" x="33" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="27" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(256 512)">
+    <ellipse cx="32" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M20 48 L44 48 L49 94 L42 111 L22 111 L13 94 Z"/>
+    <ellipse class="armor" cx="32" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="32" cy="35" r="9"/>
+    <path class="outline" d="M29 66 L17 80 M35 66 L47 80"/>
+    <path class="outline" d="M29 111 L36 119 M35 111 L28 124"/>
+    <rect class="boot" x="32" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="24" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="49" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(320 512)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 111 L20 111 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="35" r="9"/>
+    <path class="outline" d="M27 66 L17 92 M33 66 L39 92"/>
+    <path class="outline" d="M27 111 L33 119 M33 111 L27 124"/>
+    <rect class="boot" x="29" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="23" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(384 512)">
+    <ellipse cx="29" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M17 48 L41 48 L48 94 L39 111 L19 111 L12 94 Z"/>
+    <ellipse class="armor" cx="29" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="29" cy="35" r="9"/>
+    <path class="outline" d="M26 66 L15 92 M32 66 L37 92"/>
+    <path class="outline" d="M26 111 L31 119 M32 111 L27 124"/>
+    <rect class="boot" x="27" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="23" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+  <g transform="translate(448 512)">
+    <ellipse cx="30" cy="118" rx="12" ry="5" fill="#000000" opacity="0.22"/>
+    <path class="cloak" d="M18 48 L42 48 L49 94 L40 111 L20 111 L13 94 Z"/>
+    <ellipse class="armor" cx="30" cy="56" rx="11" ry="10"/>
+    <circle class="skin" cx="30" cy="35" r="9"/>
+    <path class="outline" d="M27 66 L17 92 M33 66 L39 92"/>
+    <path class="outline" d="M27 111 L33 119 M33 111 L27 124"/>
+    <rect class="boot" x="29" y="118" width="8" height="5" rx="1"/>
+    <rect class="boot" x="23" y="123" width="8" height="5" rx="1"/>
+    <rect class="weapon" x="11" y="69" width="4" height="24" rx="1"/>
+  
+  </g>
+</svg>
