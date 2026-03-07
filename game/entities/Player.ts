@@ -18,7 +18,7 @@ const RUN_FRAME_COUNT = 3
 const RUN_FRAME_DURATION_MS = 90
 const PLAYER_SCALE = 1.25
 const PLAYER_RUN_SCALE_Y = 1.21
-const PLAYER_BASE_Y = -8
+const PLAYER_BASE_Y = 2
 
 type FacingDirection =
   | 'north'
