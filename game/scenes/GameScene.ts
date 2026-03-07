@@ -48,6 +48,7 @@ const DEFAULT_MAX_HEALTH = 100
 const DEBUG_DAMAGE_AMOUNT = 25
 const TRAP_DAMAGE_AMOUNT = 20
 const TRAP_REARM_MS = 1600
+const RESPAWN_HEALTH_RATIO = 0.5
 
 type InteractableKind = 'chest' | 'locked-chest' | 'stairs' | 'npc'
 
@@ -101,6 +102,7 @@ export class GameScene extends Phaser.Scene {
   private gold = 0
   private health = DEFAULT_MAX_HEALTH
   private maxHealth = DEFAULT_MAX_HEALTH
+  private spawnTile = { x: 0, y: 0 }
   private inventory: InventoryState = createEmptyInventory(INVENTORY_COLS, INVENTORY_ROWS)
   private activeDialogue: { interactableId: string; script: DialogueScript; lineIndex: number } | null = null
   private journeyLog: JourneyLog = {
@@ -129,6 +131,7 @@ export class GameScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key
   private usePotionKey!: Phaser.Input.Keyboard.Key
   private debugDamageKey!: Phaser.Input.Keyboard.Key
+  private respawnKey!: Phaser.Input.Keyboard.Key
 
   constructor() {
     super({ key: 'GameScene' })
@@ -191,6 +194,7 @@ export class GameScene extends Phaser.Scene {
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     this.usePotionKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
     this.debugDamageKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.H)
+    this.respawnKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R)
 
     this.loadProgress()
     this.generateFloor(true)
@@ -224,7 +228,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    const input = this.activeDialogue ? new Phaser.Math.Vector2() : this.readInputVector()
+    const input = this.activeDialogue || this.isDead() ? new Phaser.Math.Vector2() : this.readInputVector()
     const movement = this.player.step(delta, input)
     const current = this.player.getMapPosition()
     let nextX = current.x
@@ -249,6 +253,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.commitMapPosition(nextX, nextY)
     this.refreshVisibility()
+    this.tryRespawn()
     this.tryTriggerTrap()
     this.tryApplyDebugDamage()
     this.tryUsePotion()
@@ -372,6 +377,7 @@ export class GameScene extends Phaser.Scene {
       'E: interact',
       'Q: use potion',
       'H: debug damage',
+      'R: respawn',
       `floor: ${this.floorIndex}`,
       `mode: ${this.player.getMovementMode()}`,
       `animation: ${this.player.getAnimationState()}`,
@@ -385,6 +391,7 @@ export class GameScene extends Phaser.Scene {
       `path status: ${this.pathStatus}`,
       `interaction: ${this.interactionStatus}`,
       `health: ${this.health}/${this.maxHealth}`,
+      `life state: ${this.isDead() ? 'dead' : 'alive'}`,
       `gold: ${this.gold}  potions: ${this.getItemCount('potion_minor')}  keys: ${this.getItemCount('utility_key')}`,
       `inventory: ${inventorySummary}`,
       `journey: ${this.journeyLog.currentChapter}`,
@@ -680,6 +687,7 @@ export class GameScene extends Phaser.Scene {
     this.dungeon.generate()
 
     const start = this.dungeon.getStartPosition()
+    this.spawnTile = { x: start.x, y: start.y }
     const spawn = cellCenter(start.x, start.y)
     this.player.clearDestination()
     this.player.setMapPosition(spawn.x, spawn.y)
@@ -772,6 +780,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryInteract(): void {
+    if (this.isDead()) {
+      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+        this.interactionStatus = 'cannot interact while dead'
+      }
+      return
+    }
+
     if (this.activeDialogue) {
       if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
         this.advanceDialogue()
@@ -830,7 +845,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryUsePotion(): void {
-    if (this.activeDialogue || !Phaser.Input.Keyboard.JustDown(this.usePotionKey)) {
+    if (this.activeDialogue || this.isDead() || !Phaser.Input.Keyboard.JustDown(this.usePotionKey)) {
       return
     }
 
@@ -874,7 +889,9 @@ export class GameScene extends Phaser.Scene {
 
     trap.lastTriggeredAt = this.time.now
     this.health = Math.max(0, this.health - TRAP_DAMAGE_AMOUNT)
-    this.interactionStatus = `triggered trap: -${TRAP_DAMAGE_AMOUNT} health`
+    this.interactionStatus = this.isDead()
+      ? `triggered trap: -${TRAP_DAMAGE_AMOUNT} health, died`
+      : `triggered trap: -${TRAP_DAMAGE_AMOUNT} health`
     this.saveProgress()
   }
 
@@ -889,7 +906,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.health = Math.max(0, this.health - DEBUG_DAMAGE_AMOUNT)
-    this.interactionStatus = `took ${DEBUG_DAMAGE_AMOUNT} damage`
+    this.interactionStatus = this.isDead()
+      ? `took ${DEBUG_DAMAGE_AMOUNT} damage and died`
+      : `took ${DEBUG_DAMAGE_AMOUNT} damage`
+    this.saveProgress()
+  }
+
+  private tryRespawn(): void {
+    if (!this.isDead() || !Phaser.Input.Keyboard.JustDown(this.respawnKey)) {
+      return
+    }
+
+    const spawn = cellCenter(this.spawnTile.x, this.spawnTile.y)
+    this.player.clearDestination()
+    this.player.setMapPosition(spawn.x, spawn.y)
+    this.player.commitMapPosition(spawn.x, spawn.y)
+    this.health = Math.max(1, Math.floor(this.maxHealth * RESPAWN_HEALTH_RATIO))
+    this.interactionStatus = `respawned on floor ${this.floorIndex}`
     this.saveProgress()
   }
 
@@ -1105,6 +1138,10 @@ export class GameScene extends Phaser.Scene {
       .slice(0, 3)
       .map(stack => `${stack.name} ${stack.count}/${stack.maxStack} @${stack.x},${stack.y}`)
       .join(' | ')
+  }
+
+  private isDead(): boolean {
+    return this.health <= 0
   }
 
   private rebuildTraps(startX: number, startY: number): void {
