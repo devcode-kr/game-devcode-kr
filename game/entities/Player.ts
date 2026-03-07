@@ -103,6 +103,10 @@ export class Player extends Phaser.GameObjects.Container {
     return this.controller.getDestination()
   }
 
+  getFinalDestination(): Phaser.Math.Vector2 | null {
+    return this.controller.getFinalDestination()
+  }
+
   getPathLength(): number {
     return this.controller.getPathLength()
   }

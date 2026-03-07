@@ -24,6 +24,7 @@ export class GameScene extends Phaser.Scene {
   private inputVector = new Phaser.Math.Vector2()
   private hoverMarker!: Phaser.GameObjects.Ellipse
   private hudText!: Phaser.GameObjects.Text
+  private pathStatus = 'idle'
   private wasd!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
 
@@ -80,30 +81,19 @@ export class GameScene extends Phaser.Scene {
       }
 
       const targetCell = this.pointerToTile(pointer.x, pointer.y)
-      if (!targetCell || !this.dungeon.isWalkable(targetCell.x, targetCell.y)) {
+      if (!targetCell) {
         this.player.clearDestination()
+        this.pathStatus = 'path failed: out of bounds'
         return
       }
 
-      const current = this.player.getMapPosition()
-      const startTile = {
-        x: Phaser.Math.Clamp(Math.floor(current.x), 0, this.dungeon.width - 1),
-        y: Phaser.Math.Clamp(Math.floor(current.y), 0, this.dungeon.height - 1),
-      }
-      const path = findAStarPath(startTile, targetCell, {
-        width: this.dungeon.width,
-        height: this.dungeon.height,
-        isWalkable: (x, y) => this.dungeon.isWalkable(x, y),
-      })
-
-      if (!path || path.length <= 1) {
+      if (!this.canOccupyCell(targetCell.x, targetCell.y)) {
         this.player.clearDestination()
+        this.pathStatus = 'path failed: blocked target'
         return
       }
 
-      this.player.setPath(
-        path.slice(1).map(node => cellCenter(node.x, node.y))
-      )
+      this.applyPathToTile(targetCell, 'path ready')
     })
 
     this.drawDungeon(false)
@@ -125,11 +115,22 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (nextX === current.x && nextY === current.y && movement.mode === 'click-move') {
-        this.player.clearDestination()
+        const repathed = this.repathToActiveGoal()
+        if (!repathed) {
+          this.player.clearDestination()
+          this.pathStatus = 'path failed: repath unavailable'
+        }
       }
     }
 
     this.player.commitMapPosition(nextX, nextY)
+
+    if (input.lengthSq() > 0) {
+      this.pathStatus = 'manual override'
+    } else if (movement.mode === 'click-move' && !this.player.hasDestination()) {
+      this.pathStatus = 'arrived'
+    }
+
     this.drawDungeon(movement.velocity.lengthSq() > 0)
   }
 
@@ -210,6 +211,7 @@ export class GameScene extends Phaser.Scene {
     this.player.syncScreenPosition(width / 2, height / 2 - 18, isMoving || this.player.hasDestination(), this.game.loop.delta)
 
     const destination = this.player.getDestination()
+    const finalDestination = this.player.getFinalDestination()
     this.hudText.setText([
       'Movement Phase 1',
       'WASD / Arrows: manual move',
@@ -220,6 +222,8 @@ export class GameScene extends Phaser.Scene {
       `world: ${playerWorld.x.toFixed(2)}, ${playerWorld.y.toFixed(2)}`,
       `path length: ${this.player.getPathLength()}`,
       `destination: ${destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none'}`,
+      `goal: ${finalDestination ? `${finalDestination.x.toFixed(2)}, ${finalDestination.y.toFixed(2)}` : 'none'}`,
+      `path status: ${this.pathStatus}`,
     ])
   }
 
@@ -289,8 +293,65 @@ export class GameScene extends Phaser.Scene {
       this.sampleWalkable(x, y - PLAYER_RADIUS)
   }
 
+  private canOccupyCell(x: number, y: number): boolean {
+    const center = cellCenter(x, y)
+    return this.canOccupy(center.x, center.y)
+  }
+
   private sampleWalkable(x: number, y: number): boolean {
     return this.dungeon.isWalkable(Math.floor(x), Math.floor(y))
+  }
+
+  private applyPathToTile(targetCell: { x: number; y: number }, successStatus: string): boolean {
+    const path = this.findPathToTile(targetCell)
+    if (!path) {
+      this.player.clearDestination()
+      this.pathStatus = 'path failed: no route'
+      return false
+    }
+
+    if (path.length <= 1) {
+      this.player.clearDestination()
+      this.pathStatus = 'already at target'
+      return false
+    }
+
+    this.player.setPath(path.slice(1).map(node => cellCenter(node.x, node.y)))
+    this.pathStatus = `${successStatus} (${path.length - 1} nodes)`
+    return true
+  }
+
+  private repathToActiveGoal(): boolean {
+    const goal = this.player.getFinalDestination()
+    if (!goal) {
+      return false
+    }
+
+    const goalTile = {
+      x: Phaser.Math.Clamp(Math.floor(goal.x), 0, this.dungeon.width - 1),
+      y: Phaser.Math.Clamp(Math.floor(goal.y), 0, this.dungeon.height - 1),
+    }
+
+    const repathed = this.applyPathToTile(goalTile, 'repath ready')
+    if (repathed) {
+      this.pathStatus = `${this.pathStatus} after blockage`
+    }
+
+    return repathed
+  }
+
+  private findPathToTile(targetCell: { x: number; y: number }) {
+    const current = this.player.getMapPosition()
+    const startTile = {
+      x: Phaser.Math.Clamp(Math.floor(current.x), 0, this.dungeon.width - 1),
+      y: Phaser.Math.Clamp(Math.floor(current.y), 0, this.dungeon.height - 1),
+    }
+
+    return findAStarPath(startTile, targetCell, {
+      width: this.dungeon.width,
+      height: this.dungeon.height,
+      isWalkable: (x, y) => this.canOccupyCell(x, y),
+    })
   }
 
   private pointerToTile(screenX: number, screenY: number): { x: number; y: number } | null {
