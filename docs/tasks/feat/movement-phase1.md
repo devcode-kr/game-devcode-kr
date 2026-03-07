@@ -327,3 +327,8 @@ node scripts/generate-character-sheet.mjs
 - Game creation now uses the parent element's current width and height instead of a fixed `800x600`.
 - `GameCanvas` now uses `ResizeObserver` to forward container size changes to `game.scale.resize(...)`.
 - The app root now uses `100dvh` and removes the old `minHeight: 600px` constraint.
+
+## Browser zoom viewport fix
+- Added `getGameViewportSize(parent)` to derive the Phaser viewport from CSS size multiplied by `visualViewport.scale`.
+- Browser zoom changes now adjust the CSS viewport but no longer shrink the in-game world range.
+- Actual browser window resizes still update the visible world area.
