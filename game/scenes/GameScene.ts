@@ -429,10 +429,9 @@ export class GameScene extends Phaser.Scene {
     const { isMoving } = movementResult
 
     this.playerStateRuntime.advanceEffectRuntime(delta)
-    this.worldRuntime.updateMonsters({
+    this.combatRuntime.updateMonsterCombat({
       deltaMs: delta,
-      dungeon: this.dungeon,
-      canOccupy: (monster, x, y) => this.navigationRuntime.canMonsterOccupy(monster.id, x, y),
+      canMonsterOccupy: (monster, x, y) => this.navigationRuntime.canMonsterOccupy(monster.id, x, y),
     })
     this.tryFireProjectile()
     this.worldRuntime.updateDeployables(this.time.now)
