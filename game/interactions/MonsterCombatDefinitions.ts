@@ -1,4 +1,3 @@
-import { PROJECTILE_DEFINITION_IDS } from './ProjectileDefinitions'
 import type { ProjectileActionSpec } from './ActionSpecs'
 
 export const MONSTER_ARCHETYPE_IDS = {
@@ -49,7 +48,7 @@ const DEFINITIONS: Record<MonsterArchetypeId, MonsterCombatDefinition> = {
     bodyStrokeColor: 0xfda4af,
     attackSpec: {
       deliveryType: 'projectile',
-      definitionId: PROJECTILE_DEFINITION_IDS.debugBolt,
+      definitionId: 'debug_bolt',
       onHitEvents: [
         {
           type: 'direct_damage',
@@ -97,7 +96,7 @@ const DEFINITIONS: Record<MonsterArchetypeId, MonsterCombatDefinition> = {
     bodyStrokeColor: 0x93c5fd,
     attackSpec: {
       deliveryType: 'projectile',
-      definitionId: PROJECTILE_DEFINITION_IDS.debugPoisonBolt,
+      definitionId: 'debug_poison_bolt',
       onHitEvents: [
         {
           type: 'direct_damage',

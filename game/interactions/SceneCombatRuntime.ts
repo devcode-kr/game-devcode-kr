@@ -3,10 +3,8 @@ import type { PlayerCharacter } from '../characters/PlayerCharacter'
 import type { CharacterController } from '../characters/CharacterController'
 import { updateCharacterMovement } from '../characters/CharacterMovementRuntime'
 import type { GameWorldRuntime } from '../world/GameWorldRuntime'
-import {
-  MONSTER_COMBAT_STATES,
-  type MonsterActor,
-} from '../world/MonsterActors'
+import { MONSTER_COMBAT_STATES } from './MonsterCombatState'
+import type { MonsterActor } from '../world/MonsterActors'
 import type { BSPDungeon } from '../map/BSPDungeon'
 import type { ProjectileActionSpec } from './ActionSpecs'
 import type { ProjectileTarget } from './ProjectileRuntime'
