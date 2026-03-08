@@ -138,7 +138,6 @@ export class GameSceneRenderRuntime {
     const finalDestination = params.playerController.getFinalDestination()
     const cooldownSummary = getItemCooldownSummaryText(params.effectRuntimeSceneState)
     params.hudText.setVisible(params.showDebugHud)
-    params.effectHud.setVisible(params.showDebugHud)
     if (params.showDebugHud) {
       params.hudRuntime.renderHudText(params.hudText, {
         floorIndex: params.floorIndex,
@@ -183,17 +182,17 @@ export class GameSceneRenderRuntime {
         journeyChapter: params.journeyChapter,
         achievementsText: params.achievementsText,
       })
-      params.effectHud.render(width, height, {
-        x: params.scene.input.activePointer.x,
-        y: params.scene.input.activePointer.y,
-      }, {
-        nowMs: params.effectNowMs,
-        activeItemBuffs: params.effectRuntimeSceneState.activeItemBuffs,
-        activeDebuffs: params.effectRuntimeSceneState.activeDebuffs,
-        poisoned: params.playerCharacter.isPoisoned(),
-        guardBuffRemainingMs: params.playerCharacter.getGuardBuffRemainingMs(params.effectNowMs),
-        dead: params.isDead,
-      })
     }
+    params.effectHud.render(width, height, {
+      x: params.scene.input.activePointer.x,
+      y: params.scene.input.activePointer.y,
+    }, {
+      nowMs: params.effectNowMs,
+      activeItemBuffs: params.effectRuntimeSceneState.activeItemBuffs,
+      activeDebuffs: params.effectRuntimeSceneState.activeDebuffs,
+      poisoned: params.playerCharacter.isPoisoned(),
+      guardBuffRemainingMs: params.playerCharacter.getGuardBuffRemainingMs(params.effectNowMs),
+      dead: params.isDead,
+    })
   }
 }
