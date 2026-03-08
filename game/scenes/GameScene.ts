@@ -267,9 +267,6 @@ export class GameScene extends Phaser.Scene {
         this.playerController.clearDestination()
         this.playerController.setMapPosition(x, y)
       },
-      refreshVisibility: () => {
-        this.navigationRuntime.refreshVisibility()
-      },
       saveProgress: () => {
         this.saveProgress()
       },
@@ -582,6 +579,8 @@ export class GameScene extends Phaser.Scene {
     this.interactables = nextState.interactables
     this.traps = nextState.traps
     this.floorIndex = nextState.floorIndex
+    this.navigationRuntime.refreshVisibility()
+    this.nearbyInteractable = this.computeNearbyInteractable()
   }
 
   private tryInteract(): void {
