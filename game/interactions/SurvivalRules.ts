@@ -4,6 +4,12 @@ import { getItemDefinition, type ItemCooldownGroup } from '../items/ItemCatalog'
 import { removeSingleItemByDefinition, type InventoryState } from '../items/Inventory'
 import type { Trap } from '../world/WorldObjects'
 
+const TRAP_POISON_DURATION_MS = 8000
+const TRAP_SLOW_DURATION_MS = 2500
+const TRAP_SLOW_STAT_MODIFIERS: CharacterStatModifier = {
+  moveSpeed: -0.35,
+}
+
 export function isDead(health: number): boolean {
   return health <= 0
 }
@@ -165,14 +171,38 @@ export function triggerTrap(params: {
   health: number
   poisoned: boolean
   guardActive: boolean
-}): { triggered: boolean; health: number; poisoned: boolean; status: string } {
+}): {
+  triggered: boolean
+  health: number
+  poisoned: boolean
+  poisonedDurationMs: number
+  slowDurationMs: number
+  slowStatModifiers: CharacterStatModifier
+  status: string
+} {
   const { trap, now, trapRearmMs, trapDamageAmount, health } = params
   if (!trap || health <= 0) {
-    return { triggered: false, health, poisoned: params.poisoned, status: '' }
+    return {
+      triggered: false,
+      health,
+      poisoned: params.poisoned,
+      poisonedDurationMs: 0,
+      slowDurationMs: 0,
+      slowStatModifiers: TRAP_SLOW_STAT_MODIFIERS,
+      status: '',
+    }
   }
 
   if (now - trap.lastTriggeredAt < trapRearmMs) {
-    return { triggered: false, health, poisoned: params.poisoned, status: '' }
+    return {
+      triggered: false,
+      health,
+      poisoned: params.poisoned,
+      poisonedDurationMs: 0,
+      slowDurationMs: 0,
+      slowStatModifiers: TRAP_SLOW_STAT_MODIFIERS,
+      status: '',
+    }
   }
 
   trap.lastTriggeredAt = now
@@ -184,9 +214,12 @@ export function triggerTrap(params: {
     triggered: true,
     health: nextHealth,
     poisoned,
+    poisonedDurationMs: nextHealth > 0 ? TRAP_POISON_DURATION_MS : 0,
+    slowDurationMs: nextHealth > 0 ? TRAP_SLOW_DURATION_MS : 0,
+    slowStatModifiers: TRAP_SLOW_STAT_MODIFIERS,
     status: nextHealth <= 0
       ? `triggered trap: -${appliedDamage} health, died`
-      : `triggered trap: -${appliedDamage} health${poisoned && !params.poisoned ? ', poisoned' : ''}`,
+      : `triggered trap: -${appliedDamage} health${poisoned && !params.poisoned ? ', poisoned' : ''}, slowed`,
   }
 }
 

@@ -99,6 +99,10 @@ export class Player extends Phaser.GameObjects.Container {
     return this.controller.getMode()
   }
 
+  setMoveSpeed(moveSpeed: number): void {
+    this.controller.setMoveSpeed(moveSpeed)
+  }
+
   getDestination(): Phaser.Math.Vector2 | null {
     return this.controller.getDestination()
   }
