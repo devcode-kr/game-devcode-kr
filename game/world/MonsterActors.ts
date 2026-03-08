@@ -3,18 +3,9 @@ import { cellCenter, type IsoPoint, worldToScreen } from '../iso'
 import { MonsterCharacter } from '../characters/MonsterCharacter'
 import { CharacterController } from '../characters/CharacterController'
 import { Monster } from '../entities/Monster'
+import { MONSTER_COMBAT_STATES, type MonsterCombatState } from '../interactions/MonsterCombatState'
 import { getMonsterCombatDefinition, type MonsterArchetypeId } from '../interactions/MonsterCombatDefinitions'
 import type { MonsterSpawn } from './WorldObjects'
-
-export const MONSTER_COMBAT_STATES = {
-  idle: 'idle',
-  chase: 'chase',
-  attack: 'attack',
-  return: 'return',
-} as const
-
-export type MonsterCombatState =
-  (typeof MONSTER_COMBAT_STATES)[keyof typeof MONSTER_COMBAT_STATES]
 
 export interface MonsterActor {
   id: string
