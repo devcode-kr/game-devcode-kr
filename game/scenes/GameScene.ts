@@ -110,6 +110,7 @@ export class GameScene extends Phaser.Scene {
   private readonly hudRuntime = new GameSceneHudRuntime()
   private readonly renderRuntime = new GameSceneRenderRuntime()
   private interactionStatus = 'none'
+  private debugHudVisible = false
   private nearbyInteractable: Interactable | null = null
   private inventorySummaryText = 'belt: empty | bag: empty'
   private potionCount = 0
@@ -146,6 +147,7 @@ export class GameScene extends Phaser.Scene {
   private fireProjectileKey!: Phaser.Input.Keyboard.Key
   private deployActionKey!: Phaser.Input.Keyboard.Key
   private attackModifierKey!: Phaser.Input.Keyboard.Key
+  private debugHudToggleKey!: Phaser.Input.Keyboard.Key
   private respawnKey!: Phaser.Input.Keyboard.Key
   private inventoryKey!: Phaser.Input.Keyboard.Key
   private inventoryTestItemsKey!: Phaser.Input.Keyboard.Key
@@ -332,9 +334,11 @@ export class GameScene extends Phaser.Scene {
     this.fireProjectileKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F)
     this.deployActionKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.V)
     this.attackModifierKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT)
+    this.debugHudToggleKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.TAB)
     this.respawnKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R)
     this.inventoryKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I)
     this.inventoryTestItemsKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T)
+    this.input.keyboard?.addCapture(Phaser.Input.Keyboard.KeyCodes.TAB)
     this.debugRuntime = new SceneDebugRuntime(
       {
         debugDamageKey: this.debugDamageKey,
@@ -472,6 +476,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.combatRuntime.updateProjectiles(delta)
     this.navigationRuntime.refreshVisibility()
+    this.tryToggleDebugHud()
     this.tryToggleInventory()
     this.debugRuntime.update()
     this.tryRespawn()
@@ -547,6 +552,7 @@ export class GameScene extends Phaser.Scene {
       keyCount: this.keyCount,
       inventorySummary: this.inventorySummaryText,
       isMoving,
+      showDebugHud: this.debugHudVisible,
       searchBudget: this.navigationRuntime.getPathSearchBudget(),
       searchBudgetMultiplier: PATH_SEARCH_BUDGET_MULTIPLIER,
       nowMs: this.time.now,
@@ -645,6 +651,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.inventoryRuntime.toggle()
+  }
+
+  private tryToggleDebugHud(): void {
+    if (!Phaser.Input.Keyboard.JustDown(this.debugHudToggleKey)) {
+      return
+    }
+
+    this.debugHudVisible = !this.debugHudVisible
   }
 
   private computeNearbyInteractable(): Interactable | null {

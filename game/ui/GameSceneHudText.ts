@@ -51,6 +51,7 @@ export function buildGameSceneHudText(params: GameSceneHudTextParams): string[] 
     'E: interact',
     'Q: use potion',
     'F: fire combined attack',
+    'Tab: toggle debug hud',
     '',
     '[Debug]',
     'V: deploy debug totem',
