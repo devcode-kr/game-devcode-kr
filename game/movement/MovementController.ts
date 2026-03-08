@@ -49,6 +49,10 @@ export class MovementController {
     return this.mode
   }
 
+  setMoveSpeed(moveSpeed: number): void {
+    this.config.moveSpeed = Math.max(0.1, moveSpeed)
+  }
+
   hasDestination(): boolean {
     return this.destination !== null || this.pathQueue.length > 0
   }
