@@ -12,7 +12,7 @@ import {
   type EffectDebuffRuntime,
   type EffectDebuffSnapshot,
 } from './EffectDebuffRules'
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
 import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
 import type { ItemCooldownRuntime } from '../items/ItemCooldownRules'
 

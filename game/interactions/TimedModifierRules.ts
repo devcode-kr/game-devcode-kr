@@ -1,4 +1,4 @@
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
 
 export interface TimedModifierRuntime {
   id: string

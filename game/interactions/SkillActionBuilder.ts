@@ -4,21 +4,9 @@ import {
   DEBUFF_EFFECT_IDS,
   getDebuffEffectDefinition,
 } from './EffectDefinitions'
-import {
-  POISON_DEBUFF_ID,
-} from './EffectRuntimeMutations'
 import { PROJECTILE_DEFINITION_IDS } from './ProjectileDefinitions'
+import { SKILL_ACTION_IDS, type SkillActionId } from './SkillActionIds'
 import { SUMMON_DEFINITION_IDS } from './SummonDefinitions'
-
-export const SKILL_ACTION_IDS = {
-  debugPoisonShot: 'debug_poison_shot',
-  debugSplitShot: 'debug_split_shot',
-  debugTotemDrop: 'debug_totem_drop',
-  debugFamiliarSummon: 'debug_familiar_summon',
-} as const
-
-export type SkillActionId =
-  (typeof SKILL_ACTION_IDS)[keyof typeof SKILL_ACTION_IDS]
 
 export function buildSkillActionSpec(id: SkillActionId): ActionSpec {
   if (id === SKILL_ACTION_IDS.debugPoisonShot) {
@@ -34,7 +22,7 @@ export function buildSkillActionSpec(id: SkillActionId): ActionSpec {
         {
           type: 'apply_debuff',
           debuff: {
-            id: POISON_DEBUFF_ID,
+            id: DEBUFF_EFFECT_IDS.poison,
             displayName: poisonDefinition.describe({
               remainingMs: 5000,
               damagePerSecond: 2,

@@ -1,7 +1,8 @@
-import { DEFAULT_CHARACTER_STATS, type CharacterCombatStats } from './CharacterJobRules'
+import type { CharacterCombatStats } from './CharacterCombatStats'
+import type { CharacterStatModifier } from './CharacterStatModifier'
+import { DEFAULT_CHARACTER_STATS } from './CharacterJobRules'
 
 export type CharacterStatKey = keyof CharacterCombatStats
-export type CharacterStatModifier = Partial<CharacterCombatStats>
 
 export interface CharacterStatComputationInput {
   baseStats?: CharacterStatModifier

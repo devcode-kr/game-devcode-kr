@@ -1,5 +1,4 @@
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
-import { getItemDefinition } from '../items/ItemCatalog'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
 
 export type EffectDefinitionKind = 'buff' | 'debuff' | 'status'
 
@@ -146,6 +145,14 @@ const statusDefinitions: Record<string, StatusEffectDefinition> = {
   }),
 }
 
+const BUFF_EFFECT_TITLES: Record<string, string> = {
+  [BUFF_EFFECT_IDS.minorPotion]: 'Minor Potion',
+  [BUFF_EFFECT_IDS.manaPotion]: 'Mana Potion',
+  [BUFF_EFFECT_IDS.guardPotion]: 'Guard Potion',
+  [BUFF_EFFECT_IDS.berserkPotion]: 'Berserk Potion',
+  [BUFF_EFFECT_IDS.hastePotion]: 'Haste Potion',
+}
+
 export function getBuffEffectDefinition(id: string): BuffEffectDefinition {
   return buffDefinitions[id] ?? createFallbackBuffDefinition(id)
 }
@@ -169,7 +176,6 @@ export function getEffectDefinitionsByKind(kind: EffectDefinitionKind): EffectDe
 }
 
 function createPotionBuffDefinition(id: string, shortLabel: string): BuffEffectDefinition {
-  const itemDefinition = getItemDefinition(id)
   const presentation = createPresentation({
     shortLabel,
     iconKey: `effect-icon-${id}`,
@@ -184,7 +190,7 @@ function createPotionBuffDefinition(id: string, shortLabel: string): BuffEffectD
     id,
     getPresentation: () => presentation,
     describe: params => ({
-      title: itemDefinition.name,
+      title: BUFF_EFFECT_TITLES[id] ?? humanizeId(id),
       durationMs: params.remainingMs,
       iconKey: presentation.iconKey,
       iconPattern: presentation.iconPattern,
@@ -271,9 +277,9 @@ function createStatusDefinition(config: {
 }
 
 function createFallbackBuffDefinition(id: string): BuffEffectDefinition {
-  const itemDefinition = getItemDefinition(id)
+  const title = BUFF_EFFECT_TITLES[id] ?? humanizeId(id)
   const presentation = createPresentation({
-    shortLabel: abbreviate(itemDefinition.name),
+    shortLabel: abbreviate(title),
     iconKey: `effect-icon-${id}`,
     iconPattern: 'spark',
     fillColor: 0x14532d,
@@ -286,7 +292,7 @@ function createFallbackBuffDefinition(id: string): BuffEffectDefinition {
     id,
     getPresentation: () => presentation,
     describe: params => ({
-      title: itemDefinition.name,
+      title,
       durationMs: params.remainingMs,
       iconKey: presentation.iconKey,
       iconPattern: presentation.iconPattern,

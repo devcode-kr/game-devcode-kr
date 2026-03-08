@@ -2,7 +2,7 @@ import type { EffectDebuffRuntime } from '../interactions/EffectDebuffRules'
 import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
 import type { InventoryState } from '../items/Inventory'
 import type { CharacterFaction } from './CharacterFaction'
-import type { CharacterRuntimeSnapshot } from './CharacterUnit'
+import type { CharacterRuntimeSnapshot } from './CharacterRuntimeSnapshot'
 
 export interface Character {
   getKind(): string

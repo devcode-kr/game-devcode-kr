@@ -1,5 +1,5 @@
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
-import type { SkillActionId } from '../interactions/SkillActionBuilder'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
+import type { SkillActionId } from '../interactions/SkillActionIds'
 import type { WeaponProjectileAttackId } from '../interactions/WeaponProjectileAttackBuilder'
 import {
   type AttackStyle,

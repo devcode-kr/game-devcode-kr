@@ -1,4 +1,4 @@
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
 import type { DeployableDefinitionId } from './DeployableDefinitions'
 import type { ProjectileDefinitionId } from './ProjectileDefinitions'
 import type { SummonDefinitionId } from './SummonDefinitions'
