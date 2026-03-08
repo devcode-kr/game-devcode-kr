@@ -19,7 +19,6 @@ export interface SceneFloorRuntimeState {
 export interface SceneFloorRuntimeCallbacks {
   resetWorldForFloor: (monsterSpawns: ReturnType<typeof generateFloorState>['monsterSpawns']) => void
   setPlayerPosition: (x: number, y: number) => void
-  refreshVisibility: () => void
   saveProgress: () => void
   applyUnlockedAchievements: (labels: string[]) => void
   setInteractionStatus: (status: string) => void
@@ -51,7 +50,6 @@ export class SceneFloorRuntime {
 
     this.callbacks.resetWorldForFloor(floor.monsterSpawns)
     this.callbacks.setPlayerPosition(floor.spawnPosition.x, floor.spawnPosition.y)
-    this.callbacks.refreshVisibility()
 
     if (params.resetFloorIndex) {
       if (params.state.floorIndex <= 1) {
