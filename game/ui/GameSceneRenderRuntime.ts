@@ -47,6 +47,7 @@ export interface GameSceneRenderRuntimeParams {
   keyCount: number
   inventorySummary: string
   isMoving: boolean
+  showDebugHud: boolean
   searchBudget: number
   searchBudgetMultiplier: number
   nowMs: number
@@ -136,59 +137,63 @@ export class GameSceneRenderRuntime {
     const destination = params.playerController.getDestination()
     const finalDestination = params.playerController.getFinalDestination()
     const cooldownSummary = getItemCooldownSummaryText(params.effectRuntimeSceneState)
-    params.hudRuntime.renderHudText(params.hudText, {
-      floorIndex: params.floorIndex,
-      movementMode: params.playerController.getMovementMode(),
-      animationState: params.player.getAnimationState(),
-      facingText: params.playerController.getFacingLabel(),
-      tileX: Math.floor(playerWorld.x),
-      tileY: Math.floor(playerWorld.y),
-      worldX: playerWorld.x,
-      worldY: playerWorld.y,
-      pathLength: params.playerController.getPathLength(),
-      destinationText: destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none',
-      goalText: finalDestination ? `${finalDestination.x.toFixed(2)}, ${finalDestination.y.toFixed(2)}` : 'none',
-      visionRadius: params.playerCharacter.getVisionRadius(),
-      visibleTiles: params.visibleTilesCount,
-      searchBudget: params.searchBudget,
-      searchBudgetMultiplier: params.searchBudgetMultiplier,
-      pathStatus: params.pathStatus,
-      interactionStatus: params.interactionStatus,
-      jobLabel: params.playerCharacter.getJob().label,
-      health: params.playerCharacter.getHealth(),
-      maxHealth: params.playerCharacter.getMaxHealth(),
-      mana: params.playerCharacter.getMana(),
-      maxMana: params.playerCharacter.getMaxMana(),
-      healthRegen: params.playerCharacter.getHealthRegen(),
-      manaRegen: params.playerCharacter.getManaRegen(),
-      meleeAttack: params.playerCharacter.getMeleeAttack(),
-      rangedAttack: params.playerCharacter.getRangedAttack(),
-      meleeMagicAttack: params.playerCharacter.getMeleeMagicAttack(),
-      rangedMagicAttack: params.playerCharacter.getRangedMagicAttack(),
-      defense: params.playerCharacter.getDefense(),
-      moveSpeed: params.playerCharacter.getMoveSpeed(),
-      attackSpeed: params.playerCharacter.getAttackSpeed(),
-      magicAttackSpeed: params.playerCharacter.getMagicAttackSpeed(),
-      fullDefenseChance: params.playerCharacter.getFullDefenseChance(),
-      cooldownSummary,
-      dead: params.isDead,
-      gold: params.gold,
-      potionCount: params.potionCount,
-      keyCount: params.keyCount,
-      inventorySummary: params.inventorySummary,
-      journeyChapter: params.journeyChapter,
-      achievementsText: params.achievementsText,
-    })
-    params.effectHud.render(width, height, {
-      x: params.scene.input.activePointer.x,
-      y: params.scene.input.activePointer.y,
-    }, {
-      nowMs: params.effectNowMs,
-      activeItemBuffs: params.effectRuntimeSceneState.activeItemBuffs,
-      activeDebuffs: params.effectRuntimeSceneState.activeDebuffs,
-      poisoned: params.playerCharacter.isPoisoned(),
-      guardBuffRemainingMs: params.playerCharacter.getGuardBuffRemainingMs(params.effectNowMs),
-      dead: params.isDead,
-    })
+    params.hudText.setVisible(params.showDebugHud)
+    params.effectHud.setVisible(params.showDebugHud)
+    if (params.showDebugHud) {
+      params.hudRuntime.renderHudText(params.hudText, {
+        floorIndex: params.floorIndex,
+        movementMode: params.playerController.getMovementMode(),
+        animationState: params.player.getAnimationState(),
+        facingText: params.playerController.getFacingLabel(),
+        tileX: Math.floor(playerWorld.x),
+        tileY: Math.floor(playerWorld.y),
+        worldX: playerWorld.x,
+        worldY: playerWorld.y,
+        pathLength: params.playerController.getPathLength(),
+        destinationText: destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none',
+        goalText: finalDestination ? `${finalDestination.x.toFixed(2)}, ${finalDestination.y.toFixed(2)}` : 'none',
+        visionRadius: params.playerCharacter.getVisionRadius(),
+        visibleTiles: params.visibleTilesCount,
+        searchBudget: params.searchBudget,
+        searchBudgetMultiplier: params.searchBudgetMultiplier,
+        pathStatus: params.pathStatus,
+        interactionStatus: params.interactionStatus,
+        jobLabel: params.playerCharacter.getJob().label,
+        health: params.playerCharacter.getHealth(),
+        maxHealth: params.playerCharacter.getMaxHealth(),
+        mana: params.playerCharacter.getMana(),
+        maxMana: params.playerCharacter.getMaxMana(),
+        healthRegen: params.playerCharacter.getHealthRegen(),
+        manaRegen: params.playerCharacter.getManaRegen(),
+        meleeAttack: params.playerCharacter.getMeleeAttack(),
+        rangedAttack: params.playerCharacter.getRangedAttack(),
+        meleeMagicAttack: params.playerCharacter.getMeleeMagicAttack(),
+        rangedMagicAttack: params.playerCharacter.getRangedMagicAttack(),
+        defense: params.playerCharacter.getDefense(),
+        moveSpeed: params.playerCharacter.getMoveSpeed(),
+        attackSpeed: params.playerCharacter.getAttackSpeed(),
+        magicAttackSpeed: params.playerCharacter.getMagicAttackSpeed(),
+        fullDefenseChance: params.playerCharacter.getFullDefenseChance(),
+        cooldownSummary,
+        dead: params.isDead,
+        gold: params.gold,
+        potionCount: params.potionCount,
+        keyCount: params.keyCount,
+        inventorySummary: params.inventorySummary,
+        journeyChapter: params.journeyChapter,
+        achievementsText: params.achievementsText,
+      })
+      params.effectHud.render(width, height, {
+        x: params.scene.input.activePointer.x,
+        y: params.scene.input.activePointer.y,
+      }, {
+        nowMs: params.effectNowMs,
+        activeItemBuffs: params.effectRuntimeSceneState.activeItemBuffs,
+        activeDebuffs: params.effectRuntimeSceneState.activeDebuffs,
+        poisoned: params.playerCharacter.isPoisoned(),
+        guardBuffRemainingMs: params.playerCharacter.getGuardBuffRemainingMs(params.effectNowMs),
+        dead: params.isDead,
+      })
+    }
   }
 }

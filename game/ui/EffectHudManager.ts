@@ -112,6 +112,21 @@ export class EffectHudManager {
     this.renderTooltip(viewportWidth, viewportHeight, pointer)
   }
 
+  setVisible(visible: boolean): void {
+    this.panel.setVisible(visible)
+    Object.values(this.rowLabels).forEach(label => label.setVisible(visible))
+    Object.values(this.emptyTexts).forEach(text => text.setVisible(visible))
+    this.badgeViews.forEach(view => view.icon.setVisible(visible && view.icon.visible))
+    this.tooltipBox.setVisible(visible && this.tooltipBox.visible)
+    this.tooltipText.setVisible(visible && this.tooltipText.visible)
+    if (!visible) {
+      this.hoveredBadgeId = null
+      this.badgeViews.forEach(view => view.icon.setVisible(false))
+      this.tooltipBox.setVisible(false)
+      this.tooltipText.setVisible(false)
+    }
+  }
+
   destroy(): void {
     this.panel.destroy()
     Object.values(this.rowLabels).forEach(text => text.destroy())
