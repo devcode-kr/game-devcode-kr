@@ -1,7 +1,6 @@
 import * as Phaser from 'phaser'
 import type { Character } from '../characters/Character'
 import type { CharacterController } from '../characters/CharacterController'
-import type { BSPDungeon } from '../map/BSPDungeon'
 import {
   destroyDeployableActors,
   drawDeployableActors,
@@ -13,7 +12,6 @@ import {
   destroyMonsterActors,
   drawMonsterActors,
   type MonsterActor,
-  updateMonsterActors,
 } from './MonsterActors'
 import {
   destroyProjectileActors,
@@ -57,19 +55,6 @@ export class GameWorldRuntime {
     this.summons = []
     this.projectiles = []
     this.monsters = createMonsterActors(scene, monsterSpawns)
-  }
-
-  updateMonsters(params: {
-    deltaMs: number
-    dungeon: BSPDungeon
-    canOccupy: (monster: MonsterActor, x: number, y: number) => boolean
-  }): void {
-    updateMonsterActors({
-      monsters: this.monsters,
-      deltaMs: params.deltaMs,
-      dungeon: params.dungeon,
-      canOccupy: params.canOccupy,
-    })
   }
 
   updateDeployables(nowMs: number): void {

@@ -35,7 +35,12 @@ export class PlayerStateRuntime {
   }
 
   advanceEffectRuntime(deltaMs: number): void {
-    this.effectRuntimeClient?.advance(deltaMs)
+    if (!this.effectRuntimeClient) {
+      this.effectRuntimeSceneState.nowMs += deltaMs
+      return
+    }
+
+    this.effectRuntimeClient.advance(deltaMs)
   }
 
   useInventoryItem(itemDefinitionId: string): { used: boolean; status: string } {
@@ -97,14 +102,26 @@ export class PlayerStateRuntime {
   initializeEffectRuntimeWorker(tickMs: number): void {
     this.effectRuntimeClient?.destroy()
     this.latestEffectRuntimeRevision = 0
-    this.effectRuntimeClient = new EffectRuntimeClient({
-      tickMs,
-      initialState: this.buildCurrentEffectRuntimeState(),
-      onState: (revision, state) => {
-        this.handleEffectRuntimeState(revision, state)
-      },
-    })
-    this.latestEffectRuntimeSyncRevision = this.effectRuntimeClient.getLatestRevision()
+    this.effectRuntimeClient = null
+    this.latestEffectRuntimeSyncRevision = 0
+
+    if (typeof Worker === 'undefined') {
+      return
+    }
+
+    try {
+      this.effectRuntimeClient = new EffectRuntimeClient({
+        tickMs,
+        initialState: this.buildCurrentEffectRuntimeState(),
+        onState: (revision, state) => {
+          this.handleEffectRuntimeState(revision, state)
+        },
+      })
+      this.latestEffectRuntimeSyncRevision = this.effectRuntimeClient.getLatestRevision()
+    } catch (error) {
+      console.error('effect runtime worker init failed; falling back to local timing only', error)
+      this.effectRuntimeClient = null
+    }
   }
 
   syncEffectRuntimeState(): void {

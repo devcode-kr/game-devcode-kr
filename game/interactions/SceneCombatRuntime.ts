@@ -3,7 +3,10 @@ import type { PlayerCharacter } from '../characters/PlayerCharacter'
 import type { CharacterController } from '../characters/CharacterController'
 import { updateCharacterMovement } from '../characters/CharacterMovementRuntime'
 import type { GameWorldRuntime } from '../world/GameWorldRuntime'
-import type { MonsterActor } from '../world/MonsterActors'
+import {
+  MONSTER_COMBAT_STATES,
+  type MonsterActor,
+} from '../world/MonsterActors'
 import type { BSPDungeon } from '../map/BSPDungeon'
 import type { ProjectileActionSpec } from './ActionSpecs'
 import type { ProjectileTarget } from './ProjectileRuntime'
@@ -15,16 +18,9 @@ import {
 } from './ActionExecutionRuntime'
 import { buildEquippedActionBundle } from './EquippedActionBundleRules'
 import { buildDeployActionSpec, DEPLOY_ACTION_IDS } from './DeployActionBuilder'
-import { canOccupy, findPathToTile } from '../navigation/NavigationRules'
+import { canOccupy, findPathToTile, hasLineOfSight } from '../navigation/NavigationRules'
 import { cellCenter } from '../iso'
-import { PROJECTILE_DEFINITION_IDS } from './ProjectileDefinitions'
-
-const MONSTER_AGGRO_RANGE = 6.5
-const MONSTER_ATTACK_RANGE = 4.75
-const MONSTER_ATTACK_INTERVAL_MS = 1400
-const MONSTER_CHASE_REPATH_MS = 300
-const MONSTER_PATH_BUDGET = 48
-const MONSTER_WANDER_REPATH_MS = 900
+import { getMonsterCombatDefinition } from './MonsterCombatDefinitions'
 
 export class SceneCombatRuntime {
   private readonly monsterNextAttackAtMs = new Map<string, number>()
@@ -52,6 +48,7 @@ export class SceneCombatRuntime {
     const nowMs = this.callbacks.getNowMs()
 
     for (const monster of this.worldRuntime.getMonsters()) {
+      const definition = getMonsterCombatDefinition(monster.archetypeId)
       const position = monster.controller.getMapPosition()
       const distanceToPlayer = Phaser.Math.Distance.Between(
         position.x,
@@ -59,13 +56,48 @@ export class SceneCombatRuntime {
         playerPosition.x,
         playerPosition.y
       )
+      const distanceToHome = Phaser.Math.Distance.Between(
+        position.x,
+        position.y,
+        monster.homePosition.x,
+        monster.homePosition.y
+      )
+      const hasSight = hasLineOfSight(
+        this.getDungeon(),
+        Math.floor(position.x),
+        Math.floor(position.y),
+        Math.floor(playerPosition.x),
+        Math.floor(playerPosition.y)
+      )
+      const canDetectPlayer = distanceToPlayer <= definition.aggroRange &&
+        (!definition.requiresLineOfSight || hasSight)
+      const shouldReturn = distanceToHome > definition.leashRange ||
+        (distanceToPlayer > definition.disengageRange && !hasSight)
 
       monster.decisionCooldownMs -= params.deltaMs
 
-      if (distanceToPlayer <= MONSTER_AGGRO_RANGE) {
-        this.updateAggroMonster(monster, playerPosition, distanceToPlayer, nowMs)
+      if (canDetectPlayer) {
+        monster.combatState = this.updateAggroMonster(
+          monster,
+          definition,
+          playerPosition,
+          distanceToPlayer,
+          hasSight,
+          nowMs
+        )
+      } else if (
+        monster.combatState === MONSTER_COMBAT_STATES.chase ||
+        monster.combatState === MONSTER_COMBAT_STATES.attack ||
+        monster.combatState === MONSTER_COMBAT_STATES.return ||
+        shouldReturn
+      ) {
+        monster.combatState = this.updateReturningMonster(
+          monster,
+          definition,
+          distanceToHome
+        )
       } else {
-        this.updateIdleMonster(monster, nowMs)
+        monster.combatState = this.updateIdleMonster(monster, definition, nowMs)
       }
 
       const movement = updateCharacterMovement({
@@ -78,6 +110,9 @@ export class SceneCombatRuntime {
 
       if (movement.blockedClickMove) {
         monster.controller.clearDestination()
+        if (monster.combatState === MONSTER_COMBAT_STATES.return) {
+          monster.decisionCooldownMs = 0
+        }
       }
     }
   }
@@ -159,33 +194,41 @@ export class SceneCombatRuntime {
 
   private updateAggroMonster(
     monster: MonsterActor,
+    definition: ReturnType<typeof getMonsterCombatDefinition>,
     playerPosition: Phaser.Math.Vector2,
     distanceToPlayer: number,
+    hasSight: boolean,
     nowMs: number
-  ): void {
+  ): MonsterActor['combatState'] {
     const face = playerPosition.clone().subtract(monster.controller.getMapPosition())
     if (face.lengthSq() > 0) {
       monster.controller.setFacing(face.x, face.y)
     }
 
-    if (distanceToPlayer <= MONSTER_ATTACK_RANGE) {
+    if (distanceToPlayer <= definition.attackRange && (!definition.requiresLineOfSight || hasSight)) {
       monster.controller.clearDestination()
       if ((this.monsterNextAttackAtMs.get(monster.id) ?? 0) <= nowMs) {
-        this.monsterNextAttackAtMs.set(monster.id, nowMs + MONSTER_ATTACK_INTERVAL_MS)
-        this.launchProjectileFromPosition(
-          monster.id,
-          monster.controller.getMapPosition().clone(),
-          playerPosition.clone(),
-          buildMonsterProjectileAttackSpec(),
-          `${monster.character.displayName} fired`
-        )
+        this.monsterNextAttackAtMs.set(monster.id, nowMs + definition.attackIntervalMs)
+        if (definition.attackSpec) {
+          this.launchProjectileFromPosition(
+            monster.id,
+            monster.controller.getMapPosition().clone(),
+            playerPosition.clone(),
+            definition.attackSpec,
+            `${monster.character.displayName} fired`
+          )
+        } else if (typeof definition.meleeDamage === 'number') {
+          this.playerCharacter.setHealth(this.playerCharacter.getHealth() - definition.meleeDamage)
+          this.callbacks.setInteractionStatus(`${monster.character.displayName} hit for ${definition.meleeDamage}`)
+          this.callbacks.syncPlayerState()
+        }
       }
-      monster.decisionCooldownMs = MONSTER_CHASE_REPATH_MS
-      return
+      monster.decisionCooldownMs = definition.chaseRepathMs
+      return MONSTER_COMBAT_STATES.attack
     }
 
     if (monster.decisionCooldownMs > 0 && monster.controller.hasDestination()) {
-      return
+      return MONSTER_COMBAT_STATES.chase
     }
 
     const chasePath = findPathToTile({
@@ -196,28 +239,78 @@ export class SceneCombatRuntime {
         y: Phaser.Math.Clamp(Math.floor(playerPosition.y), 0, this.getDungeon().height - 1),
       },
       playerRadius: monster.controller.getBodyRadius(),
-      maxVisitedNodes: MONSTER_PATH_BUDGET,
+      maxVisitedNodes: definition.pathBudget,
       isCellBlocked: (x, y) => !this.canMonsterOccupyCell(monster, x, y),
     })
     if (chasePath.path && chasePath.path.length > 1) {
-      monster.controller.setPath(chasePath.path.slice(1).map(node => cellCenter(node.x, node.y)))
+      const points = chasePath.path.slice(1).map(node => cellCenter(node.x, node.y))
+      const desiredPoints = definition.attackSpec
+        ? points.filter(point => Phaser.Math.Distance.Between(point.x, point.y, playerPosition.x, playerPosition.y) >= definition.preferredDistance)
+        : points
+      monster.controller.setPath((desiredPoints.length > 0 ? desiredPoints : points))
     } else {
       monster.controller.setDestination(playerPosition.x, playerPosition.y)
     }
-    monster.decisionCooldownMs = MONSTER_CHASE_REPATH_MS
+    monster.decisionCooldownMs = definition.chaseRepathMs
+    return MONSTER_COMBAT_STATES.chase
   }
 
-  private updateIdleMonster(monster: MonsterActor, nowMs: number): void {
+  private updateIdleMonster(
+    monster: MonsterActor,
+    definition: ReturnType<typeof getMonsterCombatDefinition>,
+    nowMs: number
+  ): MonsterActor['combatState'] {
     if (!monster.controller.hasDestination() && monster.decisionCooldownMs <= 0) {
-      assignRandomMonsterDestination(monster, this.getDungeon(), (candidate, x, y) =>
-        this.canMonsterOccupyWorld(candidate, x, y)
+      assignRandomMonsterDestination(
+        monster,
+        this.getDungeon(),
+        definition.leashRange,
+        (candidate, x, y) => this.canMonsterOccupyWorld(candidate, x, y)
       )
-      monster.decisionCooldownMs = MONSTER_WANDER_REPATH_MS + Phaser.Math.Between(0, 500)
+      monster.decisionCooldownMs = definition.idleRepathMs + Phaser.Math.Between(0, 500)
     }
 
-    if ((this.monsterNextAttackAtMs.get(monster.id) ?? 0) < nowMs - MONSTER_ATTACK_INTERVAL_MS) {
+    if ((this.monsterNextAttackAtMs.get(monster.id) ?? 0) < nowMs - definition.attackIntervalMs) {
       this.monsterNextAttackAtMs.delete(monster.id)
     }
+
+    return MONSTER_COMBAT_STATES.idle
+  }
+
+  private updateReturningMonster(
+    monster: MonsterActor,
+    definition: ReturnType<typeof getMonsterCombatDefinition>,
+    distanceToHome: number
+  ): MonsterActor['combatState'] {
+    if (distanceToHome <= 0.3) {
+      monster.controller.clearDestination()
+      monster.decisionCooldownMs = 0
+      return MONSTER_COMBAT_STATES.idle
+    }
+
+    if (monster.decisionCooldownMs > 0 && monster.controller.hasDestination()) {
+      return MONSTER_COMBAT_STATES.return
+    }
+
+    const homeCell = {
+      x: Phaser.Math.Clamp(Math.floor(monster.homePosition.x), 0, this.getDungeon().width - 1),
+      y: Phaser.Math.Clamp(Math.floor(monster.homePosition.y), 0, this.getDungeon().height - 1),
+    }
+    const returnPath = findPathToTile({
+      dungeon: this.getDungeon(),
+      current: monster.controller.getMapPosition(),
+      targetCell: homeCell,
+      playerRadius: monster.controller.getBodyRadius(),
+      maxVisitedNodes: definition.pathBudget,
+      isCellBlocked: (x, y) => !this.canMonsterOccupyCell(monster, x, y),
+    })
+    if (returnPath.path && returnPath.path.length > 1) {
+      monster.controller.setPath(returnPath.path.slice(1).map(node => cellCenter(node.x, node.y)))
+    } else {
+      monster.controller.setDestination(monster.homePosition.x, monster.homePosition.y)
+    }
+    monster.decisionCooldownMs = definition.returnRepathMs
+    return MONSTER_COMBAT_STATES.return
   }
 
   private canMonsterOccupyCell(monster: MonsterActor, tileX: number, tileY: number): boolean {
@@ -226,7 +319,6 @@ export class SceneCombatRuntime {
   }
 
   private canMonsterOccupyWorld(monster: MonsterActor, x: number, y: number): boolean {
-    const monsterPosition = monster.controller.getMapPosition()
     const playerPosition = this.playerController.getMapPosition()
     if (!canOccupy(this.getDungeon(), x, y, monster.controller.getBodyRadius())) {
       return false
@@ -246,7 +338,7 @@ export class SceneCombatRuntime {
       const candidatePosition = candidate.controller.getMapPosition()
       return Phaser.Math.Distance.Between(x, y, candidatePosition.x, candidatePosition.y) >=
         monster.controller.getBodyRadius() + candidate.controller.getBodyRadius()
-    }) && Phaser.Math.Distance.Between(x, y, monsterPosition.x, monsterPosition.y) >= 0
+    })
   }
 
   private getCombinedEquippedAttackBundle() {
@@ -303,23 +395,10 @@ export class SceneCombatRuntime {
   }
 }
 
-function buildMonsterProjectileAttackSpec(): ProjectileActionSpec {
-  return {
-    deliveryType: 'projectile',
-    definitionId: PROJECTILE_DEFINITION_IDS.debugBolt,
-    onHitEvents: [
-      {
-        type: 'direct_damage',
-        amount: 8,
-      },
-    ],
-    onExpireEvents: [],
-  }
-}
-
 function assignRandomMonsterDestination(
   monster: MonsterActor,
   dungeon: BSPDungeon,
+  roamRange: number,
   canOccupy: (monster: MonsterActor, x: number, y: number) => boolean
 ): void {
   const current = monster.controller.getMapPosition()
@@ -336,6 +415,17 @@ function assignRandomMonsterDestination(
     }
 
     const center = cellCenter(candidate.x, candidate.y)
+    if (
+      Phaser.Math.Distance.Between(
+        center.x,
+        center.y,
+        monster.homePosition.x,
+        monster.homePosition.y
+      ) > roamRange
+    ) {
+      return false
+    }
+
     return canOccupy(monster, center.x, center.y)
   })
 
