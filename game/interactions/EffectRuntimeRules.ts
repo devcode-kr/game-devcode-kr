@@ -3,7 +3,7 @@ import { pruneExpiredItemCooldowns } from '../items/ItemCooldownRules'
 import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
 import type { EffectRuntimeState } from './EffectRuntimeProtocol'
 import { tickDamageOverTime } from './EffectDamageRules'
-import { pruneExpiredTimedModifiers } from './TimedModifierRules'
+import { pruneExpiredEffectDebuffs } from './EffectDebuffRules'
 
 export function advanceEffectRuntimeByTick(
   state: EffectRuntimeState,
@@ -14,20 +14,17 @@ export function advanceEffectRuntimeByTick(
   const nextTimeMs = state.currentTimeMs + tickMs
   const activeItemBuffs = pruneExpiredActiveBuffs(state.activeItemBuffs, nextTimeMs)
   const itemCooldowns = pruneExpiredItemCooldowns(state.itemCooldowns, nextTimeMs)
-  const timedModifiers = pruneExpiredTimedModifiers(state.timedModifiers, nextTimeMs)
+  const activeDebuffs = pruneExpiredEffectDebuffs(state.activeDebuffs, nextTimeMs)
   const guardBuffRemainingMs = Math.max(0, state.guardBuffRemainingMs - tickMs)
-  const poisonedRemainingMs = Math.max(0, state.poisonedRemainingMs - tickMs)
-  const poisonTick = tickDamageOverTime({
-    currentValue: state.health,
-    damagePerSecond: poisonedRemainingMs > 0 ? state.poisonDamagePerSecond : 0,
-    deltaMs: tickMs,
-    remainder: state.poisonDamageRemainder,
-  })
+  const guardActive = guardBuffRemainingMs > 0
+  const dotTick = applyDebuffDamageTicks(activeDebuffs, state.health, tickMs, guardActive)
+  const blocksHealthRegen = activeDebuffs.some(debuff => debuff.blocksHealthRegen)
+  const poisoned = activeDebuffs.some(debuff => debuff.id === 'poison')
 
   const healthTick = tickRegeneration({
-    currentValue: poisonTick.nextValue,
+    currentValue: dotTick.health,
     maxValue: state.maxHealth,
-    regenPerSecond: poisonedRemainingMs > 0 ? 0 : state.healthRegen,
+    regenPerSecond: blocksHealthRegen ? 0 : state.healthRegen,
     deltaMs: tickMs,
     remainder: state.healthRegenRemainder,
   })
@@ -46,14 +43,47 @@ export function advanceEffectRuntimeByTick(
     healthRegenRemainder: healthTick.remainder,
     mana: manaTick.nextValue,
     manaRegenRemainder: manaTick.remainder,
-    poisoned: poisonedRemainingMs > 0 && healthTick.nextValue > 0,
-    poisonedRemainingMs: healthTick.nextValue > 0 ? poisonedRemainingMs : 0,
-    poisonDamagePerSecond: state.poisonDamagePerSecond,
-    poisonDamageRemainder: healthTick.nextValue > 0 ? poisonTick.remainder : 0,
+    poisoned: poisoned && healthTick.nextValue > 0,
     guardBuffRemainingMs,
     activeItemBuffs,
     itemCooldowns,
-    timedModifiers,
+    activeDebuffs: healthTick.nextValue > 0 ? dotTick.debuffs : [],
+  }
+}
+
+function applyDebuffDamageTicks(
+  debuffs: EffectRuntimeState['activeDebuffs'],
+  currentHealth: number,
+  tickMs: number,
+  guardActive: boolean
+): { health: number; debuffs: EffectRuntimeState['activeDebuffs'] } {
+  let nextHealth = currentHealth
+  const nextDebuffs = debuffs.map(debuff => {
+    if (!debuff.damagePerSecond || nextHealth <= 0) {
+      return debuff
+    }
+
+    const effectiveDamagePerSecond = guardActive && debuff.guardMitigatesDamage
+      ? debuff.damagePerSecond * 0.5
+      : debuff.damagePerSecond
+
+    const damageTick = tickDamageOverTime({
+      currentValue: nextHealth,
+      damagePerSecond: effectiveDamagePerSecond,
+      deltaMs: tickMs,
+      remainder: debuff.damageRemainder,
+    })
+    nextHealth = damageTick.nextValue
+
+    return {
+      ...debuff,
+      damageRemainder: damageTick.remainder,
+    }
+  })
+
+  return {
+    health: nextHealth,
+    debuffs: nextDebuffs,
   }
 }
 

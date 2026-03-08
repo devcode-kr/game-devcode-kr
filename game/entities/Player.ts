@@ -1,9 +1,9 @@
 import * as Phaser from 'phaser'
+import { CharacterController } from '../characters/CharacterController'
 import {
   AnimationStateMachine,
   type AnimationState,
 } from '../animation/AnimationStateMachine'
-import { MovementController, type MovementMode } from '../movement/MovementController'
 
 const IDLE_BOB_SPEED = 0.0022
 const RUN_BOB_SPEED = 0.011
@@ -42,7 +42,6 @@ const DIRECTION_TO_COLUMN: Record<FacingDirection, number> = {
 }
 
 export class Player extends Phaser.GameObjects.Container {
-  private readonly controller = new MovementController()
   private readonly animation = new AnimationStateMachine()
   private readonly shadow: Phaser.GameObjects.Ellipse
   private readonly selectionRing: Phaser.GameObjects.Ellipse
@@ -50,7 +49,10 @@ export class Player extends Phaser.GameObjects.Container {
   private animationState: AnimationState = 'idle'
   private facingDirection: FacingDirection = 'south'
 
-  constructor(scene: Phaser.Scene) {
+  constructor(
+    scene: Phaser.Scene,
+    private readonly controller: CharacterController
+  ) {
     super(scene, 0, 0)
 
     this.shadow = scene.add.ellipse(0, 14, 28, 14, 0x000000, 0.35)
@@ -67,64 +69,8 @@ export class Player extends Phaser.GameObjects.Container {
     scene.add.existing(this)
   }
 
-  setMapPosition(x: number, y: number): void {
-    this.controller.setPosition(x, y)
-  }
-
-  commitMapPosition(x: number, y: number): void {
-    this.controller.commitPosition(x, y)
-  }
-
-  getMapPosition(): Phaser.Math.Vector2 {
-    return this.controller.getPosition()
-  }
-
-  setDestination(x: number, y: number): void {
-    this.controller.setDestination(x, y)
-  }
-
-  setPath(points: Array<{ x: number; y: number }>): void {
-    this.controller.setPath(points)
-  }
-
-  clearDestination(): void {
-    this.controller.clearDestination()
-  }
-
-  hasDestination(): boolean {
-    return this.controller.hasDestination()
-  }
-
-  getMovementMode(): MovementMode {
-    return this.controller.getMode()
-  }
-
-  setMoveSpeed(moveSpeed: number): void {
-    this.controller.setMoveSpeed(moveSpeed)
-  }
-
-  getDestination(): Phaser.Math.Vector2 | null {
-    return this.controller.getDestination()
-  }
-
-  getFinalDestination(): Phaser.Math.Vector2 | null {
-    return this.controller.getFinalDestination()
-  }
-
-  getPathLength(): number {
-    return this.controller.getPathLength()
-  }
-
-  getPathPoints(): Phaser.Math.Vector2[] {
-    return this.controller.getPathPoints()
-  }
-
   getAnimationState(): AnimationState {
     return this.animationState
-  }
-
-  step(deltaMs: number, inputDirection: Phaser.Math.Vector2) {
-    return this.controller.step(deltaMs, inputDirection)
   }
 
   syncScreenPosition(x: number, y: number, isMoving: boolean, deltaMs: number): void {

@@ -29,3 +29,9 @@ export interface Trap {
   image: Phaser.GameObjects.Image
   lastTriggeredAt: number
 }
+
+export interface MonsterSpawn {
+  id: string
+  tileX: number
+  tileY: number
+}

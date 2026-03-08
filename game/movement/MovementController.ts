@@ -45,6 +45,15 @@ export class MovementController {
     return this.facing.clone()
   }
 
+  setFacing(x: number, y: number): void {
+    const nextFacing = new Phaser.Math.Vector2(x, y)
+    if (nextFacing.lengthSq() === 0) {
+      return
+    }
+
+    this.facing.copy(nextFacing.normalize())
+  }
+
   getMode(): MovementMode {
     return this.mode
   }

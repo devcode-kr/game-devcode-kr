@@ -1,5 +1,9 @@
 import type { CharacterStatModifier } from '../characters/CharacterStatRules'
-import { getItemDefinition, type ItemCooldownGroup } from './ItemCatalog'
+import {
+  getItemDefinition,
+  isEquippableItemDefinition,
+  type ItemCooldownGroup,
+} from './ItemCatalog'
 import type { InventoryState } from './Inventory'
 
 export interface ActiveItemBuffSnapshot {
@@ -15,7 +19,7 @@ export interface ActiveItemBuffRuntime {
 export function getInventoryEquipmentStatBonuses(inventory: InventoryState): CharacterStatModifier[] {
   return inventory.itemInstances
     .map(instance => getItemDefinition(instance.itemDefinitionId))
-    .filter(definition => definition.type === 'equipment' && definition.statModifiers)
+    .filter(definition => isEquippableItemDefinition(definition) && definition.statModifiers)
     .map(definition => definition.statModifiers!)
 }
 
@@ -61,7 +65,21 @@ export function upsertActiveItemBuff(params: {
   now: number
   group?: ItemCooldownGroup
 }): ActiveItemBuffRuntime[] {
-  const nextExpiresAt = params.now + params.durationMs
+  const existing = params.activeBuffs.find(buff => {
+    if (buff.expiresAt <= params.now) {
+      return false
+    }
+
+    if (buff.itemDefinitionId === params.itemDefinitionId) {
+      return true
+    }
+
+    if (!params.group) {
+      return false
+    }
+
+    return getItemDefinition(buff.itemDefinitionId).cooldownGroup === params.group
+  })
   const nextBuffs = params.activeBuffs.filter(buff => {
     if (buff.expiresAt <= params.now) {
       return false
@@ -80,9 +98,40 @@ export function upsertActiveItemBuff(params: {
   })
 
   nextBuffs.push({
-    itemDefinitionId: params.itemDefinitionId,
-    expiresAt: nextExpiresAt,
+    itemDefinitionId: selectStrongerItemBuff(existing?.itemDefinitionId, params.itemDefinitionId),
+    expiresAt: Math.max(existing?.expiresAt ?? params.now, params.now) + params.durationMs,
   })
 
   return nextBuffs
+}
+
+function selectStrongerItemBuff(
+  existingItemDefinitionId: string | undefined,
+  incomingItemDefinitionId: string
+): string {
+  if (!existingItemDefinitionId) {
+    return incomingItemDefinitionId
+  }
+
+  return compareModifierStrength(
+    getItemDefinition(existingItemDefinitionId).statModifiers,
+    getItemDefinition(incomingItemDefinitionId).statModifiers
+  ) > 0
+    ? existingItemDefinitionId
+    : incomingItemDefinitionId
+}
+
+function compareModifierStrength(
+  left: CharacterStatModifier | undefined,
+  right: CharacterStatModifier | undefined
+): number {
+  return getModifierStrength(left) - getModifierStrength(right)
+}
+
+function getModifierStrength(modifier: CharacterStatModifier | undefined): number {
+  if (!modifier) {
+    return 0
+  }
+
+  return Object.values(modifier).reduce((total, value) => total + Math.abs(value ?? 0), 0)
 }
