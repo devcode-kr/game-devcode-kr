@@ -1,6 +1,6 @@
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
-import type { SkillActionId } from '../interactions/SkillActionBuilder'
-import { SKILL_ACTION_IDS } from '../interactions/SkillActionBuilder'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
+import type { SkillActionId } from '../interactions/SkillActionIds'
+import { SKILL_ACTION_IDS } from '../interactions/SkillActionIds'
 import type { WeaponProjectileAttackId } from '../interactions/WeaponProjectileAttackBuilder'
 import { WEAPON_PROJECTILE_ATTACK_IDS } from '../interactions/WeaponProjectileAttackBuilder'
 

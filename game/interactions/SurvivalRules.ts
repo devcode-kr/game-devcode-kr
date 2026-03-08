@@ -1,5 +1,5 @@
 import { cellCenter } from '../iso'
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
 import {
   getItemDefinition,
   isUsableItemDefinition,

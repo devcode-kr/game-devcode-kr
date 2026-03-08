@@ -1,16 +1,17 @@
 import * as Phaser from 'phaser'
 import type { Character } from './Character'
+import type { CharacterCombatStats } from './CharacterCombatStats'
 import type { CharacterFaction } from './CharacterFaction'
+import type { CharacterRuntimeSnapshot } from './CharacterRuntimeSnapshot'
+import type { CharacterStatModifier } from './CharacterStatModifier'
 import {
   getCharacterJobDefinition,
-  type CharacterCombatStats,
   type CharacterJobDefinition,
   type CharacterJobId,
 } from './CharacterJobRules'
 import {
   createEmptyCharacterStatModifier,
   resolveCharacterStats,
-  type CharacterStatModifier,
 } from './CharacterStatRules'
 import { tickRegeneration } from './CharacterRegenRules'
 import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
@@ -21,14 +22,6 @@ import {
   type CharacterEquipmentLoadout,
 } from '../items/CharacterEquipmentLoadout'
 import { STATUS_EFFECT_IDS } from '../interactions/EffectDefinitions'
-
-export interface CharacterRuntimeSnapshot {
-  jobId: CharacterJobId
-  health: number
-  mana: number
-  poisoned: boolean
-  guardBuffRemainingMs: number
-}
 
 interface CharacterUnitConfig {
   id: string

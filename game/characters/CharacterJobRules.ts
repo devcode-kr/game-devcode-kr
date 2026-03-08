@@ -1,23 +1,7 @@
-import type { CharacterStatModifier } from './CharacterStatRules'
+import type { CharacterCombatStats } from './CharacterCombatStats'
+import type { CharacterStatModifier } from './CharacterStatModifier'
 
 export type CharacterJobId = 'warrior' | 'mage' | 'rogue'
-
-export interface CharacterCombatStats {
-  visionRadius: number
-  maxHealth: number
-  maxMana: number
-  healthRegen: number
-  manaRegen: number
-  meleeAttack: number
-  rangedAttack: number
-  meleeMagicAttack: number
-  rangedMagicAttack: number
-  defense: number
-  moveSpeed: number
-  attackSpeed: number
-  magicAttackSpeed: number
-  fullDefenseChance: number
-}
 
 export interface CharacterJobDefinition {
   id: CharacterJobId

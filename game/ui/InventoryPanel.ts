@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser'
-import type { CharacterStatModifier } from '../characters/CharacterStatRules'
+import type { CharacterStatModifier } from '../characters/CharacterStatModifier'
 import {
   getItemDefinition,
   getItemTypeLabel,

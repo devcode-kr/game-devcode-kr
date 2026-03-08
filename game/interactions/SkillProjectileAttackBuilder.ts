@@ -2,9 +2,6 @@ import {
   DEBUFF_EFFECT_IDS,
   getDebuffEffectDefinition,
 } from './EffectDefinitions'
-import {
-  POISON_DEBUFF_ID,
-} from './EffectRuntimeMutations'
 import type { ProjectileActionSpec } from './ActionSpecs'
 import { PROJECTILE_DEFINITION_IDS } from './ProjectileDefinitions'
 
@@ -29,7 +26,7 @@ export function buildSkillProjectileAttackSpec(id: SkillProjectileAttackId): Pro
         {
           type: 'apply_debuff',
           debuff: {
-            id: POISON_DEBUFF_ID,
+            id: DEBUFF_EFFECT_IDS.poison,
             displayName: poisonDefinition.describe({
               remainingMs: 5000,
               damagePerSecond: 2,
