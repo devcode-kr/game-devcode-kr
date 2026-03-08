@@ -2,7 +2,7 @@ import * as Phaser from 'phaser'
 import { cellCenter } from '../iso'
 import { BSPDungeon } from '../map/BSPDungeon'
 import { buildWorldObjects, destroyWorldObjects } from './WorldBuilder'
-import type { Interactable, Trap } from './WorldObjects'
+import type { Interactable, MonsterSpawn, Trap } from './WorldObjects'
 
 export interface GeneratedFloorState {
   dungeon: BSPDungeon
@@ -10,6 +10,7 @@ export interface GeneratedFloorState {
   spawnPosition: { x: number; y: number }
   interactables: Interactable[]
   traps: Trap[]
+  monsterSpawns: MonsterSpawn[]
 }
 
 export function generateFloorState(params: {
@@ -33,5 +34,6 @@ export function generateFloorState(params: {
     spawnPosition: cellCenter(start.x, start.y),
     interactables: worldObjects.interactables,
     traps: worldObjects.traps,
+    monsterSpawns: worldObjects.monsterSpawns,
   }
 }

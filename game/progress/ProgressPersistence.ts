@@ -8,7 +8,7 @@ import type { ActiveItemBuffSnapshot } from '../items/ItemStatRules'
 import type { ItemCooldownSnapshot } from '../items/ItemCooldownRules'
 import { getDefaultCharacterJobId, type CharacterJobId } from '../characters/CharacterJobRules'
 import type { ProgressSnapshot } from './ProgressStore'
-import type { TimedModifierSnapshot } from '../interactions/TimedModifierRules'
+import type { EffectDebuffSnapshot } from '../interactions/EffectDebuffRules'
 
 export interface RuntimeProgressState {
   floorIndex: number
@@ -19,11 +19,10 @@ export interface RuntimeProgressState {
   mana: number
   maxMana: number
   poisoned: boolean
-  poisonedRemainingMs: number
   guardBuffRemainingMs: number
   activeItemBuffs: ActiveItemBuffSnapshot[]
   itemCooldowns: ItemCooldownSnapshot[]
-  timedModifiers: TimedModifierSnapshot[]
+  activeDebuffs: EffectDebuffSnapshot[]
   inventory: InventoryState
   beltInventory: InventoryState
 }
@@ -37,11 +36,10 @@ export function createProgressSnapshot(params: {
   mana: number
   maxMana: number
   poisoned: boolean
-  poisonedRemainingMs: number
   guardBuffRemainingMs: number
   activeItemBuffs: ActiveItemBuffSnapshot[]
   itemCooldowns: ItemCooldownSnapshot[]
-  timedModifiers: TimedModifierSnapshot[]
+  activeDebuffs: EffectDebuffSnapshot[]
   inventory: InventoryState
   beltInventory: InventoryState
   journeyLog: ProgressSnapshot['journeyLog']
@@ -56,11 +54,10 @@ export function createProgressSnapshot(params: {
     mana: params.mana,
     maxMana: params.maxMana,
     poisoned: params.poisoned,
-    poisonedRemainingMs: params.poisonedRemainingMs,
     guardBuffRemainingMs: params.guardBuffRemainingMs,
     activeItemBuffs: params.activeItemBuffs,
     itemCooldowns: params.itemCooldowns,
-    timedModifiers: params.timedModifiers,
+    activeDebuffs: params.activeDebuffs,
     inventory: params.inventory,
     beltInventory: params.beltInventory,
     journeyLog: params.journeyLog,
@@ -93,11 +90,10 @@ export function applyProgressSnapshot(
       mana: snapshot.mana ?? defaults.defaultMana,
       maxMana: snapshot.maxMana ?? defaults.defaultMana,
       poisoned: snapshot.poisoned ?? false,
-      poisonedRemainingMs: snapshot.poisonedRemainingMs ?? 0,
       guardBuffRemainingMs: snapshot.guardBuffRemainingMs ?? 0,
       activeItemBuffs: snapshot.activeItemBuffs ?? [],
       itemCooldowns: snapshot.itemCooldowns ?? [],
-      timedModifiers: snapshot.timedModifiers ?? [],
+      activeDebuffs: snapshot.activeDebuffs ?? [],
       inventory: snapshot.inventory ?? createInventoryFromLegacySnapshot(snapshot, defaults.inventoryCols, defaults.inventoryRows),
       beltInventory: snapshot.beltInventory ?? createEmptyInventory(defaults.beltCols, defaults.beltRows),
     },

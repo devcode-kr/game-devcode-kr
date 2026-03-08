@@ -40,6 +40,7 @@ export function findPathToTile(params: {
   targetCell: { x: number; y: number }
   playerRadius: number
   maxVisitedNodes: number
+  isCellBlocked?: (x: number, y: number) => boolean
 }) {
   const startTile = {
     x: Phaser.Math.Clamp(Math.floor(params.current.x), 0, params.dungeon.width - 1),
@@ -49,7 +50,7 @@ export function findPathToTile(params: {
   return findAStarPath(startTile, params.targetCell, {
     width: params.dungeon.width,
     height: params.dungeon.height,
-    isWalkable: (x, y) => canOccupyCell(params.dungeon, x, y, params.playerRadius),
+    isWalkable: (x, y) => canOccupyCell(params.dungeon, x, y, params.playerRadius) && !params.isCellBlocked?.(x, y),
     maxVisitedNodes: params.maxVisitedNodes,
   })
 }

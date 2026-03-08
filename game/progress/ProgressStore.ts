@@ -2,7 +2,7 @@ import type { InventoryState } from '../items/Inventory'
 import type { CharacterJobId } from '../characters/CharacterJobRules'
 import type { ActiveItemBuffSnapshot } from '../items/ItemStatRules'
 import type { ItemCooldownSnapshot } from '../items/ItemCooldownRules'
-import type { TimedModifierSnapshot } from '../interactions/TimedModifierRules'
+import type { EffectDebuffSnapshot } from '../interactions/EffectDebuffRules'
 
 export interface JourneyLog {
   currentChapter: string
@@ -35,11 +35,11 @@ export interface ProgressSnapshot {
   mana?: number
   maxMana?: number
   poisoned?: boolean
-  poisonedRemainingMs?: number
   guardBuffRemainingMs?: number
   activeItemBuffs?: ActiveItemBuffSnapshot[]
   itemCooldowns?: ItemCooldownSnapshot[]
-  timedModifiers?: TimedModifierSnapshot[]
+  activeDebuffs?: EffectDebuffSnapshot[]
+  poisonedRemainingMs?: number
   potions?: number
   keys?: number
   inventory?: InventoryState

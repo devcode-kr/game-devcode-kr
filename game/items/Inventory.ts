@@ -32,6 +32,27 @@ export interface InventoryStackView {
   y: number
 }
 
+export function getInventoryStackById(
+  inventory: InventoryState,
+  stackId: string
+): InventoryStack | null {
+  return inventory.stacks.find(stack => stack.stackId === stackId) ?? null
+}
+
+export function getStackPrimaryItemInstanceId(
+  inventory: InventoryState,
+  stackId: string
+): string | null {
+  return getInventoryStackById(inventory, stackId)?.itemInstanceIds[0] ?? null
+}
+
+export function getStackIdByItemInstanceId(
+  inventory: InventoryState,
+  instanceId: string
+): string | null {
+  return inventory.stacks.find(stack => stack.itemInstanceIds.includes(instanceId))?.stackId ?? null
+}
+
 export function createEmptyInventory(cols: number, rows: number): InventoryState {
   return {
     cols,

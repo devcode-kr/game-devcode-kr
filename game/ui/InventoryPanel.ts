@@ -1,6 +1,10 @@
 import * as Phaser from 'phaser'
 import type { CharacterStatModifier } from '../characters/CharacterStatRules'
-import { getItemDefinition } from '../items/ItemCatalog'
+import {
+  getItemDefinition,
+  getItemTypeLabel,
+  isBeltCompatibleItemDefinition,
+} from '../items/ItemCatalog'
 import {
   canTransferInventoryStack,
   canMoveInventoryStack,
@@ -90,6 +94,32 @@ export class InventoryPanel {
     return this.open
   }
 
+  getSelectedStackId(): string | null {
+    return this.selectedStackId
+  }
+
+  getDraggingStackId(): string | null {
+    return this.draggingStackId
+  }
+
+  clearDragging(): void {
+    this.draggingStackId = null
+  }
+
+  getDropCellAt(
+    screenX: number,
+    screenY: number,
+    viewportWidth: number,
+    inventory: InventoryState,
+    beltInventory: InventoryState
+  ): { inventoryKind: InventoryKind; x: number; y: number } | null {
+    if (!this.open) {
+      return null
+    }
+
+    return this.getGridCellAt(screenX, screenY, viewportWidth, inventory, beltInventory)
+  }
+
   toggle(): void {
     this.open = !this.open
     if (!this.open) {
@@ -151,7 +181,7 @@ export class InventoryPanel {
     }
 
     if (draggingStack) {
-      this.drawDragPreview(layout, inventory, beltInventory, draggingStack, pointer.x, pointer.y)
+      this.drawDragPreview(layout, viewportWidth, inventory, beltInventory, draggingStack, pointer.x, pointer.y)
     }
   }
 
@@ -304,7 +334,7 @@ export class InventoryPanel {
         'selection:',
         '- drag to move',
         '- right click: use',
-        '- consumables prefer belt',
+        '- usable items prefer belt',
         '',
         '[I] close',
       ]
@@ -319,7 +349,7 @@ export class InventoryPanel {
       '',
       `selected: ${definition.name}`,
       `slot: ${selectedStack.inventoryKind}`,
-      `type: ${definition.type}`,
+      `type: ${getItemTypeLabel(definition)}`,
       `size: ${definition.width}x${definition.height}`,
       `stack: ${selectedStack.stack.count}/${selectedStack.stack.maxStack}`,
       ...(definition.healAmount ? [`effect: heal ${definition.healAmount}`] : []),
@@ -408,6 +438,7 @@ export class InventoryPanel {
 
   private drawDragPreview(
     layout: InventoryPanelLayout,
+    viewportWidth: number,
     inventory: InventoryState,
     beltInventory: InventoryState,
     dragging: LocatedStack,
@@ -417,7 +448,7 @@ export class InventoryPanel {
     const targetCell = this.getGridCellAt(
       screenX,
       screenY,
-      layout.panelX + layout.panelWidth,
+      viewportWidth,
       inventory,
       beltInventory
     )
@@ -486,16 +517,30 @@ export class InventoryPanel {
     return this.getLocatedStacks(inventory, beltInventory).find(candidate => {
       const originX = candidate.inventoryKind === 'belt' ? layout.beltGridX : layout.inventoryGridX
       const originY = candidate.inventoryKind === 'belt' ? layout.beltGridY : layout.inventoryGridY
-      const itemX = originX + candidate.stack.x * INVENTORY_CELL_SIZE
-      const itemY = originY + candidate.stack.y * INVENTORY_CELL_SIZE
-      const itemWidth = candidate.stack.width * INVENTORY_CELL_SIZE - 2
-      const itemHeight = candidate.stack.height * INVENTORY_CELL_SIZE - 2
-
-      return screenX >= itemX &&
-        screenX <= itemX + itemWidth &&
-        screenY >= itemY &&
-        screenY <= itemY + itemHeight
+      return this.isPointInsideFootprint(screenX, screenY, originX, originY, candidate.stack)
     }) ?? null
+  }
+
+  private isPointInsideFootprint(
+    screenX: number,
+    screenY: number,
+    originX: number,
+    originY: number,
+    stack: InventoryStackView
+  ): boolean {
+    const localX = screenX - (originX + stack.x * INVENTORY_CELL_SIZE)
+    const localY = screenY - (originY + stack.y * INVENTORY_CELL_SIZE)
+    if (localX < 0 || localY < 0) {
+      return false
+    }
+
+    const footprintX = Math.floor(localX / INVENTORY_CELL_SIZE)
+    const footprintY = Math.floor(localY / INVENTORY_CELL_SIZE)
+    if (footprintX < 0 || footprintX >= stack.width || footprintY < 0 || footprintY >= stack.height) {
+      return false
+    }
+
+    return stack.footprint[footprintY]?.[footprintX] === 1
   }
 
   private getGridCellAt(
@@ -557,7 +602,7 @@ export class InventoryPanel {
     targetInventoryKind: InventoryKind
   ): boolean {
     const definition = getItemDefinition(stack.itemDefinitionId)
-    if (targetInventoryKind === 'belt' && definition.type !== 'consumable') {
+    if (targetInventoryKind === 'belt' && !isBeltCompatibleItemDefinition(definition)) {
       return false
     }
 

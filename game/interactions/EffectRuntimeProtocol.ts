@@ -1,6 +1,6 @@
 import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
 import type { ItemCooldownRuntime } from '../items/ItemCooldownRules'
-import type { TimedModifierRuntime } from './TimedModifierRules'
+import type { EffectDebuffRuntime } from './EffectDebuffRules'
 
 export interface EffectRuntimeState {
   currentTimeMs: number
@@ -13,13 +13,10 @@ export interface EffectRuntimeState {
   manaRegen: number
   manaRegenRemainder: number
   poisoned: boolean
-  poisonedRemainingMs: number
-  poisonDamagePerSecond: number
-  poisonDamageRemainder: number
   guardBuffRemainingMs: number
   activeItemBuffs: ActiveItemBuffRuntime[]
   itemCooldowns: ItemCooldownRuntime[]
-  timedModifiers: TimedModifierRuntime[]
+  activeDebuffs: EffectDebuffRuntime[]
 }
 
 export type EffectRuntimeCommand =

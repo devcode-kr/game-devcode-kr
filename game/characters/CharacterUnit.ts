@@ -1,4 +1,6 @@
 import * as Phaser from 'phaser'
+import type { Character } from './Character'
+import type { CharacterFaction } from './CharacterFaction'
 import {
   getCharacterJobDefinition,
   type CharacterCombatStats,
@@ -11,6 +13,14 @@ import {
   type CharacterStatModifier,
 } from './CharacterStatRules'
 import { tickRegeneration } from './CharacterRegenRules'
+import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
+import type { EffectDebuffRuntime } from '../interactions/EffectDebuffRules'
+import { createEmptyInventory, type InventoryState } from '../items/Inventory'
+import {
+  createEmptyCharacterEquipmentLoadout,
+  type CharacterEquipmentLoadout,
+} from '../items/CharacterEquipmentLoadout'
+import { STATUS_EFFECT_IDS } from '../interactions/EffectDefinitions'
 
 export interface CharacterRuntimeSnapshot {
   jobId: CharacterJobId
@@ -29,9 +39,13 @@ interface CharacterUnitConfig {
   mana?: number
   poisoned?: boolean
   guardBuffRemainingMs?: number
+  inventoryCols?: number
+  inventoryRows?: number
+  beltCols?: number
+  beltRows?: number
 }
 
-export abstract class CharacterUnit {
+export abstract class CharacterUnit implements Character {
   readonly id: string
   readonly displayName: string
   private jobId: CharacterJobId
@@ -39,6 +53,11 @@ export abstract class CharacterUnit {
   private equipmentBonuses: CharacterStatModifier[] = []
   private potionBonuses: CharacterStatModifier[] = []
   private temporaryBonuses: CharacterStatModifier[] = []
+  private inventory: InventoryState
+  private beltInventory: InventoryState
+  private equipmentLoadout: CharacterEquipmentLoadout
+  private activeItemBuffs: ActiveItemBuffRuntime[] = []
+  private activeDebuffs: EffectDebuffRuntime[] = []
   private health: number
   private mana: number
   private poisoned: boolean
@@ -57,9 +76,13 @@ export abstract class CharacterUnit {
     this.mana = Phaser.Math.Clamp(config.mana ?? stats.maxMana, 0, stats.maxMana)
     this.poisoned = config.poisoned ?? false
     this.guardBuffUntil = config.guardBuffRemainingMs ?? 0
+    this.inventory = createEmptyInventory(config.inventoryCols ?? 0, config.inventoryRows ?? 0)
+    this.beltInventory = createEmptyInventory(config.beltCols ?? 0, config.beltRows ?? 0)
+    this.equipmentLoadout = createEmptyCharacterEquipmentLoadout()
   }
 
   abstract getKind(): string
+  abstract getFaction(): CharacterFaction
 
   getJob(): CharacterJobDefinition {
     return getCharacterJobDefinition(this.jobId)
@@ -104,8 +127,63 @@ export abstract class CharacterUnit {
     this.reconcileResourceCaps()
   }
 
+  getInventory(): InventoryState {
+    return this.inventory
+  }
+
+  getBeltInventory(): InventoryState {
+    return this.beltInventory
+  }
+
+  setInventoryStates(inventory: InventoryState, beltInventory: InventoryState): void {
+    this.inventory = inventory
+    this.beltInventory = beltInventory
+  }
+
+  getEquipmentLoadout(): CharacterEquipmentLoadout {
+    return this.equipmentLoadout
+  }
+
+  setEquipmentLoadout(equipmentLoadout: CharacterEquipmentLoadout): void {
+    this.equipmentLoadout = equipmentLoadout
+  }
+
+  getActiveItemBuffs(): ActiveItemBuffRuntime[] {
+    return this.activeItemBuffs
+  }
+
+  setActiveItemBuffs(activeItemBuffs: ActiveItemBuffRuntime[]): void {
+    this.activeItemBuffs = activeItemBuffs
+  }
+
+  getActiveDebuffs(): EffectDebuffRuntime[] {
+    return this.activeDebuffs
+  }
+
+  setActiveDebuffs(activeDebuffs: EffectDebuffRuntime[]): void {
+    this.activeDebuffs = activeDebuffs
+  }
+
+  getActiveStatusIds(now: number): string[] {
+    const statuses: string[] = []
+    if (this.poisoned) {
+      statuses.push(STATUS_EFFECT_IDS.poisoned)
+    }
+    if (this.isGuardActive(now)) {
+      statuses.push(STATUS_EFFECT_IDS.guard)
+    }
+    if (this.isDead()) {
+      statuses.push(STATUS_EFFECT_IDS.dead)
+    }
+    return statuses
+  }
+
   getHealth(): number {
     return this.health
+  }
+
+  getVisionRadius(): number {
+    return this.getCombatStats().visionRadius
   }
 
   getMaxHealth(): number {
@@ -180,7 +258,7 @@ export abstract class CharacterUnit {
     this.poisoned = poisoned
   }
 
-  applyRegeneration(deltaMs: number): void {
+  tickResources(deltaMs: number): void {
     if (this.isDead()) {
       return
     }
@@ -206,6 +284,10 @@ export abstract class CharacterUnit {
     this.manaRegenRemainder = manaTick.remainder
   }
 
+  applyRegeneration(deltaMs: number): void {
+    this.tickResources(deltaMs)
+  }
+
   private reconcileResourceCaps(): void {
     const stats = this.getCombatStats()
     this.health = Phaser.Math.Clamp(this.health, 0, stats.maxHealth)
@@ -225,11 +307,36 @@ export abstract class CharacterUnit {
   }
 
   extendGuardBuff(durationMs: number, now: number): void {
-    this.guardBuffUntil = Math.max(this.guardBuffUntil, now + Math.max(0, durationMs))
+    this.guardBuffUntil = Math.max(this.guardBuffUntil, now) + Math.max(0, durationMs)
   }
 
   isDead(): boolean {
     return this.health <= 0
+  }
+
+  canMove(): boolean {
+    return !this.isDead() && this.getMoveSpeed() > 0
+  }
+
+  getMoveDistance(deltaMs: number): number {
+    if (!this.canMove() || deltaMs <= 0) {
+      return 0
+    }
+
+    return (deltaMs / 1000) * this.getMoveSpeed()
+  }
+
+  computeMoveDelta(deltaMs: number, direction: { x: number; y: number }): { x: number; y: number } {
+    const vector = new Phaser.Math.Vector2(direction.x, direction.y)
+    if (!this.canMove() || vector.lengthSq() === 0) {
+      return { x: 0, y: 0 }
+    }
+
+    vector.normalize().scale(this.getMoveDistance(deltaMs))
+    return {
+      x: vector.x,
+      y: vector.y,
+    }
   }
 
   applyRuntimeSnapshot(snapshot: CharacterRuntimeSnapshot, now: number): void {

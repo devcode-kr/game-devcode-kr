@@ -1,46 +1,73 @@
 import type { ItemCooldownGroup } from '../items/ItemCatalog'
 import type { EffectRuntimeSceneState } from './EffectRuntimeSceneBridge'
-import { upsertTimedModifier, type TimedModifierRuntime } from './TimedModifierRules'
+import {
+  DEBUFF_EFFECT_IDS,
+  getDebuffEffectDefinition,
+} from './EffectDefinitions'
+import {
+  clearEffectDebuffById,
+  restoreEffectDebuffs,
+  serializeEffectDebuffs,
+  upsertEffectDebuff,
+  type EffectDebuffRuntime,
+  type EffectDebuffSnapshot,
+} from './EffectDebuffRules'
 import type { CharacterStatModifier } from '../characters/CharacterStatRules'
 import type { ActiveItemBuffRuntime } from '../items/ItemStatRules'
 import type { ItemCooldownRuntime } from '../items/ItemCooldownRules'
+
+export const POISON_DEBUFF_ID = DEBUFF_EFFECT_IDS.poison
+export const TRAP_SLOW_DEBUFF_ID = DEBUFF_EFFECT_IDS.trapSlow
 
 export function applyTrapRuntimeEffects(params: {
   sceneState: EffectRuntimeSceneState
   nowMs: number
   poisonedDurationMs: number
+  poisonDamagePerSecond: number
   slowDurationMs: number
   slowStatModifiers: CharacterStatModifier
 }): void {
-  if (params.slowDurationMs > 0) {
-    params.sceneState.timedModifiers = upsertTimedModifier({
-      modifiers: params.sceneState.timedModifiers,
-      id: 'trap_slow',
-      durationMs: params.slowDurationMs,
-      now: params.nowMs,
-      statModifiers: params.slowStatModifiers,
+  if (params.poisonedDurationMs > 0) {
+    const definition = getDebuffEffectDefinition(POISON_DEBUFF_ID)
+    const resolved = definition.describe({
+      remainingMs: params.poisonedDurationMs,
+      damagePerSecond: params.poisonDamagePerSecond,
+    })
+    params.sceneState.activeDebuffs = upsertEffectDebuff({
+      debuffs: params.sceneState.activeDebuffs,
+      id: POISON_DEBUFF_ID,
+      displayName: resolved.title,
+      durationMs: params.poisonedDurationMs,
+      nowMs: params.nowMs,
+      damagePerSecond: params.poisonDamagePerSecond,
+      blocksHealthRegen: true,
+      guardMitigatesDamage: true,
     })
   }
 
-  params.sceneState.poisonedRemainingMs = Math.max(
-    params.sceneState.poisonedRemainingMs,
-    params.poisonedDurationMs
-  )
-
-  if (params.poisonedDurationMs > 0) {
-    params.sceneState.poisonDamageRemainder = 0
+  if (params.slowDurationMs > 0) {
+    const definition = getDebuffEffectDefinition(TRAP_SLOW_DEBUFF_ID)
+    const resolved = definition.describe({
+      remainingMs: params.slowDurationMs,
+      statModifiers: params.slowStatModifiers,
+    })
+    params.sceneState.activeDebuffs = upsertEffectDebuff({
+      debuffs: params.sceneState.activeDebuffs,
+      id: TRAP_SLOW_DEBUFF_ID,
+      displayName: resolved.title,
+      durationMs: params.slowDurationMs,
+      nowMs: params.nowMs,
+      statModifiers: params.slowStatModifiers,
+    })
   }
 }
 
 export function clearEffectRuntimeDebuffs(sceneState: EffectRuntimeSceneState): void {
-  sceneState.poisonedRemainingMs = 0
-  sceneState.poisonDamageRemainder = 0
-  sceneState.timedModifiers = []
+  sceneState.activeDebuffs = []
 }
 
-export function clearPoisonRuntime(sceneState: EffectRuntimeSceneState): void {
-  sceneState.poisonedRemainingMs = 0
-  sceneState.poisonDamageRemainder = 0
+export function clearPoisonRuntime(sceneState: EffectRuntimeSceneState, nowMs: number): void {
+  sceneState.activeDebuffs = clearEffectDebuffById(sceneState.activeDebuffs, POISON_DEBUFF_ID, nowMs)
 }
 
 export function applyConsumableRuntimeEffects(params: {
@@ -66,7 +93,7 @@ export function applyConsumableRuntimeEffects(params: {
   ) => ItemCooldownRuntime[]
 }): void {
   if (!params.poisoned) {
-    clearPoisonRuntime(params.sceneState)
+    clearPoisonRuntime(params.sceneState, params.nowMs)
   }
 
   if (params.statBuffDurationMs > 0 && params.statBuffItemDefinitionId) {
@@ -92,17 +119,28 @@ export function applyConsumableRuntimeEffects(params: {
 export function restoreEffectRuntimeCollections(params: {
   sceneState: EffectRuntimeSceneState
   nowMs: number
-  poisonedRemainingMs: number
   restoreActiveItemBuffs: (nowMs: number) => ActiveItemBuffRuntime[]
   restoreItemCooldowns: (nowMs: number) => ItemCooldownRuntime[]
-  restoreTimedModifiers: (nowMs: number) => TimedModifierRuntime[]
+  restoreActiveDebuffs: (nowMs: number) => EffectDebuffRuntime[]
 }): void {
   params.sceneState.nowMs = params.nowMs
   params.sceneState.healthRegenRemainder = 0
   params.sceneState.manaRegenRemainder = 0
-  params.sceneState.poisonedRemainingMs = params.poisonedRemainingMs
-  params.sceneState.poisonDamageRemainder = 0
   params.sceneState.activeItemBuffs = params.restoreActiveItemBuffs(params.nowMs)
   params.sceneState.itemCooldowns = params.restoreItemCooldowns(params.nowMs)
-  params.sceneState.timedModifiers = params.restoreTimedModifiers(params.nowMs)
+  params.sceneState.activeDebuffs = params.restoreActiveDebuffs(params.nowMs)
+}
+
+export function createEffectRuntimeDebuffPersistence(params: {
+  sceneState: EffectRuntimeSceneState
+  nowMs: number
+}): EffectDebuffSnapshot[] {
+  return serializeEffectDebuffs(params.sceneState.activeDebuffs, params.nowMs)
+}
+
+export function restoreEffectRuntimeDebuffPersistence(
+  snapshots: EffectDebuffSnapshot[],
+  nowMs: number
+): EffectDebuffRuntime[] {
+  return restoreEffectDebuffs(snapshots, nowMs)
 }

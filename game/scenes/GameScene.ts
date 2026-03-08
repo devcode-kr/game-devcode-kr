@@ -1,21 +1,36 @@
 import * as Phaser from 'phaser'
+import { CharacterController } from '../characters/CharacterController'
 import { Player } from '../entities/Player'
 import { PlayerCharacter } from '../characters/PlayerCharacter'
 import {
-  createEmptyInventory,
+  isCharacterMovementArrived,
+  updateCharacterMovement,
+} from '../characters/CharacterMovementRuntime'
+import {
+  getStackPrimaryItemInstanceId,
+  getStackIdByItemInstanceId,
   moveInventoryStack,
   removeSingleItemByDefinition,
   transferInventoryStack,
-  type InventoryState,
 } from '../items/Inventory'
+import type { ActionBundle } from '../interactions/ActionBundleRules'
+import {
+  assignItemToEquipmentTarget,
+  buildAutomaticEquipmentLoadout,
+  clearEquipmentTarget,
+  type EquipmentSlotTarget,
+  getEquipmentTargetInstanceId,
+  getEquipmentStatBonuses,
+  isCharacterEquipmentLoadoutEmpty,
+  reconcileCharacterEquipmentLoadout,
+} from '../items/CharacterEquipmentLoadout'
 import {
   addInventoryItems,
-  getInventorySummaryText,
+  getInventorySummaryText as summarizeInventory,
   getItemCountAcrossInventories,
 } from '../items/InventoryUtils'
 import {
   getActiveItemBuffStatBonuses,
-  getInventoryEquipmentStatBonuses,
   restoreActiveItemBuffs,
   serializeActiveItemBuffs,
 } from '../items/ItemStatRules'
@@ -31,42 +46,60 @@ import {
   getPathSearchBudget,
   pointerToTile,
 } from '../navigation/NavigationRules'
-import { openChest } from '../interactions/ChestInteractions'
 import {
   advanceDialogue,
   getDialoguePanelState,
-  startNpcDialogue,
   type ActiveDialogue,
 } from '../interactions/DialogueFlow'
 import {
-  applyDebugDamage,
-  getRespawnHealth,
-  getRespawnPosition,
-  triggerTrap,
+  getNearbyInteractionStatus,
+  resolveSceneInteraction,
+} from '../interactions/SceneInteractionFlow'
+import {
+  isDead,
 } from '../interactions/SurvivalRules'
 import { runInventoryItemUseFlow } from '../interactions/InventoryItemUseFlow'
+import { applyDebuffToCharacter } from '../interactions/CharacterDebuffRuntime'
+import { canCharacterAttackCharacter } from '../interactions/CombatTargetRules'
+import type {
+  ProjectileActionSpec,
+  ProjectileLifecycleEvent,
+} from '../interactions/ActionSpecs'
+import { buildDeployActionSpec, DEPLOY_ACTION_IDS } from '../interactions/DeployActionBuilder'
+import {
+  deployFacingAction,
+  executeActionBundle as executeRuntimeActionBundle,
+  launchProjectileFromPosition as launchRuntimeProjectileFromPosition,
+  updateDeployableAttacks as updateRuntimeDeployableAttacks,
+  updateSummonActions,
+} from '../interactions/ActionExecutionRuntime'
+import { buildEquippedActionBundle } from '../interactions/EquippedActionBundleRules'
+import { getProjectileDefinition } from '../interactions/ProjectileDefinitions'
+import type { ProjectileExpiration, ProjectileImpact, ProjectileTarget } from '../interactions/ProjectileRuntime'
 import { EffectRuntimeClient } from '../interactions/EffectRuntimeClient'
 import {
-  applyTrapRuntimeEffects,
-  clearEffectRuntimeDebuffs,
   restoreEffectRuntimeCollections,
 } from '../interactions/EffectRuntimeMutations'
+import {
+  resolveDebugDamageSurvival,
+  resolveRespawnSurvival,
+  resolveTrapSurvival,
+} from '../interactions/SceneSurvivalFlow'
 import { type EffectRuntimeState } from '../interactions/EffectRuntimeProtocol'
 import {
   applyEffectRuntimeWorkerState,
   areEffectRuntimeStatesEqual,
   buildEffectRuntimeState,
-  createEffectRuntimeProgressData,
   createInitialEffectRuntimeSceneState,
-  DEFAULT_POISON_DAMAGE_PER_SECOND,
-  getActiveBuffSummaryText,
-  getActiveDebuffSummaryText,
+  getActiveDebuffStatModifiers,
   getItemCooldownSummaryText,
 } from '../interactions/EffectRuntimeSceneBridge'
 import {
-  restoreTimedModifiers,
-  serializeTimedModifiers,
-} from '../interactions/TimedModifierRules'
+  restoreEffectDebuffs,
+  serializeEffectDebuffs,
+  upsertEffectDebuff,
+} from '../interactions/EffectDebuffRules'
+import { resolveProjectileAreaDamageHits } from '../interactions/ProjectileAreaDamageRules'
 import { BSPDungeon, TileType } from '../map/BSPDungeon'
 import {
   createLocalStorageProgressStore,
@@ -76,9 +109,9 @@ import {
   type ProgressStore,
 } from '../progress/ProgressStore'
 import {
-  applyProgressSnapshot as applyStoredProgressSnapshot,
-  createProgressSnapshot as createStoredProgressSnapshot,
-} from '../progress/ProgressPersistence'
+  applyGameSceneProgressSnapshot,
+  createGameSceneProgressSnapshot,
+} from '../progress/GameSceneProgress'
 import {
   markEnteredDungeon,
   markReachedFloor,
@@ -93,19 +126,41 @@ import {
   worldToScreen,
 } from '../iso'
 import { DialoguePanel } from '../ui/DialoguePanel'
+import { EffectHudManager } from '../ui/EffectHudManager'
+import { bakeEffectIconTextures } from '../ui/EffectIconTextures'
+import { FacingCaret } from '../ui/FacingCaret'
+import { EquipmentPanel } from '../ui/EquipmentPanel'
+import { buildGameSceneHudText } from '../ui/GameSceneHudText'
 import { InventoryPanel } from '../ui/InventoryPanel'
 import { type Interactable, type Trap } from '../world/WorldObjects'
+import { createMonsterActors, destroyMonsterActors, drawMonsterActors, type MonsterActor, updateMonsterActors } from '../world/MonsterActors'
+import {
+  destroyDeployableActors,
+  drawDeployableActors,
+  type DeployableActor,
+  updateDeployableActors,
+} from '../world/DeployableActors'
+import {
+  destroySummonActors,
+  drawSummonActors,
+  type SummonActor,
+} from '../world/SummonActors'
+import {
+  destroyProjectileActors,
+  drawProjectileActors,
+  type ProjectileActor,
+  updateProjectileActors,
+} from '../world/ProjectileActors'
 import {
   bakeWorldTextures,
   findNearbyInteractable,
 } from '../world/WorldBuilder'
 import { generateFloorState } from '../world/FloorFlow'
 import { TEST_BELT_ITEM_DEFINITION_IDS, TEST_SHAPE_ITEM_DEFINITION_IDS } from '../items/ItemCatalog'
-import { getItemDefinition } from '../items/ItemCatalog'
 
 const POOL_SIZE = 1000
-const PLAYER_RADIUS = 0.24
-const VISIBILITY_RADIUS = 12
+const PLAYER_BODY_RADIUS = 0.24
+const MONSTER_BODY_RADIUS = 0.24
 const PATH_SEARCH_BUDGET_MULTIPLIER = 1.5
 const MIN_PATH_SEARCH_BUDGET = 8
 const INTERACTION_RANGE = 1.1
@@ -119,10 +174,19 @@ const TRAP_DAMAGE_AMOUNT = 20
 const TRAP_REARM_MS = 1600
 const RESPAWN_HEALTH_RATIO = 0.5
 const EFFECT_TICK_MS = 100
+const POISON_DOT_DAMAGE_PER_SECOND = 3
+const SUMMON_ATTACK_INTERVAL_MS = 1250
+const SUMMON_TARGETING_RANGE = 6.5
 
 export class GameScene extends Phaser.Scene {
   private player!: Player
-  private readonly playerCharacter = new PlayerCharacter()
+  private readonly playerCharacter = new PlayerCharacter({
+    inventoryCols: INVENTORY_COLS,
+    inventoryRows: INVENTORY_ROWS,
+    beltCols: BELT_COLS,
+    beltRows: BELT_ROWS,
+  })
+  private readonly playerController = new CharacterController(this.playerCharacter, PLAYER_BODY_RADIUS)
   private dungeon!: BSPDungeon
   private tilePool: Phaser.GameObjects.Image[] = []
   private pathGraphics!: Phaser.GameObjects.Graphics
@@ -130,17 +194,22 @@ export class GameScene extends Phaser.Scene {
   private visibleTiles = new Set<string>()
   private interactables: Interactable[] = []
   private traps: Trap[] = []
+  private monsters: MonsterActor[] = []
+  private deployables: DeployableActor[] = []
+  private summons: SummonActor[] = []
+  private projectiles: ProjectileActor[] = []
   private hoverMarker!: Phaser.GameObjects.Ellipse
   private hudText!: Phaser.GameObjects.Text
+  private effectHud!: EffectHudManager
+  private facingCaret!: FacingCaret
   private dialoguePanel!: DialoguePanel
   private inventoryPanel!: InventoryPanel
+  private equipmentPanel!: EquipmentPanel
   private pathStatus = 'idle'
   private interactionStatus = 'none'
   private floorIndex = 1
   private gold = 0
   private spawnTile = { x: 0, y: 0 }
-  private inventory: InventoryState = createEmptyInventory(INVENTORY_COLS, INVENTORY_ROWS)
-  private beltInventory: InventoryState = createEmptyInventory(BELT_COLS, BELT_ROWS)
   private activeDialogue: ActiveDialogue | null = null
   private journeyLog: JourneyLog = {
     currentChapter: 'Entered the dungeon',
@@ -168,6 +237,9 @@ export class GameScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key
   private usePotionKey!: Phaser.Input.Keyboard.Key
   private debugDamageKey!: Phaser.Input.Keyboard.Key
+  private fireProjectileKey!: Phaser.Input.Keyboard.Key
+  private deployActionKey!: Phaser.Input.Keyboard.Key
+  private attackModifierKey!: Phaser.Input.Keyboard.Key
   private respawnKey!: Phaser.Input.Keyboard.Key
   private inventoryKey!: Phaser.Input.Keyboard.Key
   private inventoryTestItemsKey!: Phaser.Input.Keyboard.Key
@@ -185,6 +257,7 @@ export class GameScene extends Phaser.Scene {
     this.effectRuntimeSceneState.nowMs = this.time.now
 
     this.bakeDiamonds()
+    bakeEffectIconTextures(this)
 
     for (let i = 0; i < POOL_SIZE; i++) {
       this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
@@ -193,7 +266,7 @@ export class GameScene extends Phaser.Scene {
     this.pathGraphics = this.add.graphics()
     this.pathGraphics.setDepth(9996)
 
-    this.player = new Player(this)
+    this.player = new Player(this, this.playerController)
 
     this.hoverMarker = this.add.ellipse(0, 0, 28, 14)
     this.hoverMarker.setStrokeStyle(2, 0xf59e0b, 0.95)
@@ -210,8 +283,11 @@ export class GameScene extends Phaser.Scene {
     this.hudText.setDepth(10000)
     this.hudText.setScrollFactor(0)
 
+    this.effectHud = new EffectHudManager(this)
+    this.facingCaret = new FacingCaret(this)
     this.dialoguePanel = new DialoguePanel(this)
     this.inventoryPanel = new InventoryPanel(this)
+    this.equipmentPanel = new EquipmentPanel(this)
 
     this.wasd = {
       up: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
@@ -223,6 +299,9 @@ export class GameScene extends Phaser.Scene {
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     this.usePotionKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
     this.debugDamageKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.H)
+    this.fireProjectileKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F)
+    this.deployActionKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.V)
+    this.attackModifierKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT)
     this.respawnKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R)
     this.inventoryKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I)
     this.inventoryTestItemsKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T)
@@ -234,17 +313,38 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.effectRuntimeClient?.destroy()
       this.effectRuntimeClient = null
+      this.effectHud.destroy()
+      this.facingCaret.destroy()
+      this.equipmentPanel.destroy()
+      destroyDeployableActors(this.deployables)
+      destroySummonActors(this.summons)
+      destroyProjectileActors(this.projectiles)
+      destroyMonsterActors(this.monsters)
     })
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.inventoryPanel.isOpen()) {
+        const equipmentClick = this.equipmentPanel.handlePointerDown(pointer.x, pointer.y)
+        if (equipmentClick.target) {
+          if (this.getSelectedInventoryItemInstanceId()) {
+            this.applyEquipmentPanelSelection(equipmentClick.target)
+          } else if (pointer.button === 0 && this.isEquipmentTargetFilled(equipmentClick.target)) {
+            this.equipmentPanel.startDragging(equipmentClick.target)
+          }
+        }
+        if (equipmentClick.consumed) {
+          return
+        }
+      }
+
       if (this.inventoryPanel.isOpen()) {
         const inventoryClick = this.inventoryPanel.handlePointerDown(
           pointer.x,
           pointer.y,
           pointer.button,
           this.scale.width,
-          this.inventory,
-          this.beltInventory
+          this.playerCharacter.getInventory(),
+          this.playerCharacter.getBeltInventory()
         )
         if (inventoryClick.requestedUseItemDefinitionId) {
           this.useInventoryItem(inventoryClick.requestedUseItemDefinitionId)
@@ -267,17 +367,38 @@ export class GameScene extends Phaser.Scene {
         screenY: pointer.y,
         viewportWidth: this.scale.width,
         viewportHeight: this.scale.height,
-        playerWorld: this.player.getMapPosition(),
+        playerWorld: this.playerController.getMapPosition(),
         dungeon: this.dungeon,
       })
       if (!targetCell) {
-        this.player.clearDestination()
+        this.playerController.clearDestination()
         this.pathStatus = 'path failed: out of bounds'
         return
       }
 
+      if (this.attackModifierKey.isDown) {
+        this.faceTowardCell(targetCell)
+        const attackBundle = this.getCombinedEquippedAttackBundle()
+        if (!attackBundle) {
+          this.interactionStatus = 'no weapon equipped'
+          return
+        }
+
+        const result = executeRuntimeActionBundle({
+          context: this.buildFacingActionContext(),
+          actionBundle: attackBundle,
+          collections: this.getActionExecutionCollections(),
+          successStatus: 'weapon attack fired',
+          summonAttackIntervalMs: SUMMON_ATTACK_INTERVAL_MS,
+          summonTargetingRange: SUMMON_TARGETING_RANGE,
+        })
+        this.applyActionExecutionCollections(result)
+        this.interactionStatus = result.status
+        return
+      }
+
       if (!this.canOccupyCell(targetCell.x, targetCell.y)) {
-        this.player.clearDestination()
+        this.playerController.clearDestination()
         this.pathStatus = 'path failed: blocked target'
         return
       }
@@ -290,23 +411,41 @@ export class GameScene extends Phaser.Scene {
         return
       }
 
+      const draggingEquipmentTarget = this.equipmentPanel.getDraggingTarget()
+      if (draggingEquipmentTarget) {
+        const handled = this.tryDropDraggedEquipmentIntoInventory(draggingEquipmentTarget, pointer.x, pointer.y)
+        this.equipmentPanel.clearDragging()
+        if (handled) {
+          return
+        }
+      }
+
+      if (this.inventoryPanel.getDraggingStackId()) {
+        const equipmentDrop = this.equipmentPanel.handlePointerUp(pointer.x, pointer.y)
+        if (equipmentDrop.target) {
+          this.applyEquipmentPanelSelection(equipmentDrop.target)
+          this.inventoryPanel.clearDragging()
+          return
+        }
+      }
+
       const inventoryClick = this.inventoryPanel.handlePointerUp(
         pointer.x,
         pointer.y,
         this.scale.width,
-        this.inventory,
-        this.beltInventory
+        this.playerCharacter.getInventory(),
+        this.playerCharacter.getBeltInventory()
       )
       if (!inventoryClick.requestedMove) {
         return
       }
 
       const sourceInventory = inventoryClick.requestedMove.sourceInventoryKind === 'belt'
-        ? this.beltInventory
-        : this.inventory
+        ? this.playerCharacter.getBeltInventory()
+        : this.playerCharacter.getInventory()
       const targetInventory = inventoryClick.requestedMove.targetInventoryKind === 'belt'
-        ? this.beltInventory
-        : this.inventory
+        ? this.playerCharacter.getBeltInventory()
+        : this.playerCharacter.getInventory()
       const moved = sourceInventory === targetInventory
         ? moveInventoryStack(
             targetInventory,
@@ -335,31 +474,62 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    const input = this.activeDialogue || this.isDead() ? new Phaser.Math.Vector2() : this.readInputVector()
-    const movement = this.player.step(delta, input)
-    const current = this.player.getMapPosition()
-    let nextX = current.x
-    let nextY = current.y
+    const movementResult = updateCharacterMovement({
+      character: this.playerCharacter,
+      mover: this.playerController,
+      deltaMs: delta,
+      inputDirection: this.activeDialogue || this.isDead() ? new Phaser.Math.Vector2() : this.readInputVector(),
+      canOccupy: (x, y) => this.canOccupy(x, y),
+    })
+    const { input, movement, isMoving, blockedClickMove } = movementResult
 
-    if (movement.velocity.lengthSq() > 0) {
-      if (this.canOccupy(movement.nextPosition.x, current.y)) {
-        nextX = movement.nextPosition.x
-      }
-      if (this.canOccupy(nextX, movement.nextPosition.y)) {
-        nextY = movement.nextPosition.y
-      }
-
-      if (nextX === current.x && nextY === current.y && movement.mode === 'click-move') {
-        const repathed = this.repathToActiveGoal()
-        if (!repathed) {
-          this.player.clearDestination()
-          this.pathStatus = 'path failed: repath unavailable'
-        }
+    if (blockedClickMove) {
+      const repathed = this.repathToActiveGoal()
+      if (!repathed) {
+        this.playerController.clearDestination()
+        this.pathStatus = 'path failed: repath unavailable'
       }
     }
 
-    this.player.commitMapPosition(nextX, nextY)
     this.effectRuntimeClient?.advance(delta)
+    updateMonsterActors({
+      monsters: this.monsters,
+      deltaMs: delta,
+      dungeon: this.dungeon,
+      canOccupy: (monster, x, y) => this.canMonsterOccupy(monster.id, x, y),
+    })
+    this.tryFireProjectile()
+    this.tryDeployAction()
+    this.deployables = updateDeployableActors(this.deployables, this.time.now)
+    const deployableAttackResult = updateRuntimeDeployableAttacks({
+      scene: this,
+      nowMs: this.time.now,
+      deployables: this.deployables,
+      projectiles: this.projectiles,
+      findNearestMonster: (x, y, range) => this.findNearestMonster(x, y, range),
+    })
+    this.projectiles = deployableAttackResult.projectiles
+    if (deployableAttackResult.status) {
+      this.interactionStatus = deployableAttackResult.status
+    }
+    const summonResult = updateSummonActions({
+      scene: this,
+      nowMs: this.time.now,
+      deltaMs: delta,
+      summons: this.summons,
+      projectiles: this.projectiles,
+      ownerPosition: this.playerController.getMapPosition(),
+      findNearestTarget: (x, y, range) => {
+        const monster = this.findNearestMonster(x, y, range)
+        return monster?.controller.getMapPosition() ?? null
+      },
+    })
+    this.summons = summonResult.summons
+    this.projectiles = summonResult.projectiles
+    if (summonResult.status) {
+      this.interactionStatus = summonResult.status
+    }
+    this.updateProjectiles(delta)
     this.refreshVisibility()
     this.tryToggleInventory()
     this.tryAddInventoryTestItems()
@@ -371,11 +541,11 @@ export class GameScene extends Phaser.Scene {
 
     if (input.lengthSq() > 0) {
       this.pathStatus = 'manual override'
-    } else if (movement.mode === 'click-move' && !this.player.hasDestination()) {
+    } else if (isCharacterMovementArrived(movement.mode, this.playerController.hasDestination())) {
       this.pathStatus = 'arrived'
     }
 
-    this.drawDungeon(movement.velocity.lengthSq() > 0)
+    this.drawDungeon(isMoving)
   }
 
   private bakeDiamonds() {
@@ -410,7 +580,7 @@ export class GameScene extends Phaser.Scene {
 
   private drawDungeon(isMoving: boolean) {
     const { width, height } = this.scale
-    const playerWorld = this.player.getMapPosition()
+    const playerWorld = this.playerController.getMapPosition()
     const playerScreen = worldToScreen(playerWorld)
     const grid = this.dungeon.getGrid()
     let poolIdx = 0
@@ -442,6 +612,33 @@ export class GameScene extends Phaser.Scene {
 
     this.drawTraps(playerScreen, width, height)
     this.drawInteractables(playerScreen, width, height)
+    drawMonsterActors({
+      monsters: this.monsters,
+      playerScreen,
+      width,
+      height,
+      deltaMs: this.game.loop.delta,
+    })
+    drawDeployableActors({
+      deployables: this.deployables,
+      playerScreen,
+      width,
+      height,
+      nowMs: this.time.now,
+    })
+    drawSummonActors({
+      summons: this.summons,
+      playerScreen,
+      width,
+      height,
+      nowMs: this.time.now,
+    })
+    drawProjectileActors({
+      projectiles: this.projectiles,
+      playerScreen,
+      width,
+      height,
+    })
     this.drawPath(playerWorld, playerScreen, width, height)
 
     const hoveredTile = pointerToTile({
@@ -463,67 +660,84 @@ export class GameScene extends Phaser.Scene {
       this.hoverMarker.setVisible(false)
     }
 
-    this.player.syncScreenPosition(width / 2, height / 2 - 18, isMoving || this.player.hasDestination(), this.game.loop.delta)
+    this.player.syncScreenPosition(width / 2, height / 2 - 18, isMoving || this.playerController.hasDestination(), this.game.loop.delta)
+    const facing = this.playerController.getFacing()
+    this.facingCaret.render(width / 2, height / 2 - 18, facing.x, facing.y)
     this.dialoguePanel.render(width, height, getDialoguePanelState(this.activeDialogue))
-    this.inventoryPanel.render(width, this.inventory, this.beltInventory, {
+    this.inventoryPanel.render(width, this.playerCharacter.getInventory(), this.playerCharacter.getBeltInventory(), {
       x: this.input.activePointer.x,
       y: this.input.activePointer.y,
     })
+    this.equipmentPanel.render(
+      width,
+      this.playerCharacter.getEquipmentLoadout(),
+      this.playerCharacter.getInventory(),
+      this.inventoryPanel.isOpen(),
+      {
+        x: this.input.activePointer.x,
+        y: this.input.activePointer.y,
+      },
+      this.getSelectedInventoryItemDefinitionId()
+    )
 
-    const destination = this.player.getDestination()
-    const finalDestination = this.player.getFinalDestination()
+    const destination = this.playerController.getDestination()
+    const finalDestination = this.playerController.getFinalDestination()
     const inventorySummary = this.getInventorySummaryText()
-    const activeBuffSummary = getActiveBuffSummaryText({
-      sceneState: this.effectRuntimeSceneState,
-      getItemLabel: itemDefinitionId => getItemDefinition(itemDefinitionId).name,
-    })
-    const activeDebuffSummary = getActiveDebuffSummaryText({
-      sceneState: this.effectRuntimeSceneState,
-      poisonDamagePerSecond: DEFAULT_POISON_DAMAGE_PER_SECOND,
-    })
     const cooldownSummary = getItemCooldownSummaryText(this.effectRuntimeSceneState)
-    this.hudText.setText([
-      'Movement Phase 1',
-      'WASD / Arrows: manual move',
-      'LMB: A* click move',
-      'E: interact',
-      'Q: use potion',
-      'H: debug damage',
-      'R: respawn',
-      'I: inventory',
-      'T: add test shapes',
-      `floor: ${this.floorIndex}`,
-      `mode: ${this.player.getMovementMode()}`,
-      `animation: ${this.player.getAnimationState()}`,
-      `tile: ${Math.floor(playerWorld.x)}, ${Math.floor(playerWorld.y)}`,
-      `world: ${playerWorld.x.toFixed(2)}, ${playerWorld.y.toFixed(2)}`,
-      `path length: ${this.player.getPathLength()}`,
-      `destination: ${destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none'}`,
-      `goal: ${finalDestination ? `${finalDestination.x.toFixed(2)}, ${finalDestination.y.toFixed(2)}` : 'none'}`,
-      `visible tiles: ${this.visibleTiles.size}`,
-      `search budget: ${this.getPathSearchBudget()} (${PATH_SEARCH_BUDGET_MULTIPLIER.toFixed(1)}x)`,
-      `path status: ${this.pathStatus}`,
-      `interaction: ${this.interactionStatus}`,
-      `job: ${this.playerCharacter.getJob().label}`,
-      `health: ${this.playerCharacter.getHealth()}/${this.playerCharacter.getMaxHealth()}`,
-      `mana: ${this.playerCharacter.getMana()}/${this.playerCharacter.getMaxMana()}`,
-      `regen(hp/mp): ${this.playerCharacter.getHealthRegen().toFixed(1)}/${this.playerCharacter.getManaRegen().toFixed(1)}`,
-      `atk(melee/ranged): ${this.playerCharacter.getMeleeAttack()}/${this.playerCharacter.getRangedAttack()}`,
-      `matk(melee/ranged): ${this.playerCharacter.getMeleeMagicAttack()}/${this.playerCharacter.getRangedMagicAttack()}`,
-      `def/move: ${this.playerCharacter.getDefense()}/${this.playerCharacter.getMoveSpeed().toFixed(2)}`,
-      `atk spd/magic spd: ${this.playerCharacter.getAttackSpeed().toFixed(2)}/${this.playerCharacter.getMagicAttackSpeed().toFixed(2)}`,
-      `full defense: ${(this.playerCharacter.getFullDefenseChance() * 100).toFixed(1)}%`,
-      `buffs: ${activeBuffSummary}`,
-      `debuffs: ${activeDebuffSummary}`,
-      `cooldowns: ${cooldownSummary}`,
-      `poisoned: ${this.playerCharacter.isPoisoned() ? 'yes' : 'no'}`,
-      `guard: ${this.getGuardStatusText()}`,
-      `life state: ${this.isDead() ? 'dead' : 'alive'}`,
-      `gold: ${this.gold}  potions: ${this.getItemCount('potion_minor')}  keys: ${this.getItemCount('utility_key')}`,
-      `inventory: ${inventorySummary}`,
-      `journey: ${this.journeyLog.currentChapter}`,
-      `achievements: ${this.achievements.unlocked.length > 0 ? this.achievements.unlocked.join(', ') : 'none'}`,
-    ])
+    this.hudText.setText(buildGameSceneHudText({
+      floorIndex: this.floorIndex,
+      movementMode: this.playerController.getMovementMode(),
+      animationState: this.player.getAnimationState(),
+      facingText: this.playerController.getFacingLabel(),
+      tileX: Math.floor(playerWorld.x),
+      tileY: Math.floor(playerWorld.y),
+      worldX: playerWorld.x,
+      worldY: playerWorld.y,
+      pathLength: this.playerController.getPathLength(),
+      destinationText: destination ? `${destination.x.toFixed(2)}, ${destination.y.toFixed(2)}` : 'none',
+      goalText: finalDestination ? `${finalDestination.x.toFixed(2)}, ${finalDestination.y.toFixed(2)}` : 'none',
+      visionRadius: this.playerCharacter.getVisionRadius(),
+      visibleTiles: this.visibleTiles.size,
+      searchBudget: this.getPathSearchBudget(),
+      searchBudgetMultiplier: PATH_SEARCH_BUDGET_MULTIPLIER,
+      pathStatus: this.pathStatus,
+      interactionStatus: this.interactionStatus,
+      jobLabel: this.playerCharacter.getJob().label,
+      health: this.playerCharacter.getHealth(),
+      maxHealth: this.playerCharacter.getMaxHealth(),
+      mana: this.playerCharacter.getMana(),
+      maxMana: this.playerCharacter.getMaxMana(),
+      healthRegen: this.playerCharacter.getHealthRegen(),
+      manaRegen: this.playerCharacter.getManaRegen(),
+      meleeAttack: this.playerCharacter.getMeleeAttack(),
+      rangedAttack: this.playerCharacter.getRangedAttack(),
+      meleeMagicAttack: this.playerCharacter.getMeleeMagicAttack(),
+      rangedMagicAttack: this.playerCharacter.getRangedMagicAttack(),
+      defense: this.playerCharacter.getDefense(),
+      moveSpeed: this.playerCharacter.getMoveSpeed(),
+      attackSpeed: this.playerCharacter.getAttackSpeed(),
+      magicAttackSpeed: this.playerCharacter.getMagicAttackSpeed(),
+      fullDefenseChance: this.playerCharacter.getFullDefenseChance(),
+      cooldownSummary,
+      dead: this.isDead(),
+      gold: this.gold,
+      potionCount: this.getItemCount('potion_minor'),
+      keyCount: this.getItemCount('utility_key'),
+      inventorySummary,
+      journeyChapter: this.journeyLog.currentChapter,
+      achievementsText: this.achievements.unlocked.length > 0 ? this.achievements.unlocked.join(', ') : 'none',
+    }))
+    this.effectHud.render(width, height, {
+      x: this.input.activePointer.x,
+      y: this.input.activePointer.y,
+    }, {
+      nowMs: this.getEffectRuntimeNowMs(),
+      activeItemBuffs: this.effectRuntimeSceneState.activeItemBuffs,
+      activeDebuffs: this.effectRuntimeSceneState.activeDebuffs,
+      poisoned: this.playerCharacter.isPoisoned(),
+      guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(this.getEffectRuntimeNowMs()),
+      dead: this.isDead(),
+    })
   }
 
   private drawPath(
@@ -532,7 +746,7 @@ export class GameScene extends Phaser.Scene {
     width: number,
     height: number
   ) {
-    const points = this.player.getPathPoints()
+    const points = this.playerController.getPathPoints()
     this.pathGraphics.clear()
 
     if (points.length === 0) {
@@ -585,17 +799,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private canOccupy(x: number, y: number): boolean {
-    return canOccupy(this.dungeon, x, y, PLAYER_RADIUS)
+    const radius = this.playerController.getBodyRadius()
+    return canOccupy(this.dungeon, x, y, radius) &&
+      !this.isBlockedByMonsterActors(x, y, radius)
   }
 
   private canOccupyCell(x: number, y: number): boolean {
-    return canOccupyCell(this.dungeon, x, y, PLAYER_RADIUS)
+    const radius = this.playerController.getBodyRadius()
+    return canOccupyCell(this.dungeon, x, y, radius) &&
+      !this.isBlockedByMonsterActors(cellCenter(x, y).x, cellCenter(x, y).y, radius)
   }
 
   private applyPathToTile(targetCell: { x: number; y: number }, successStatus: string): boolean {
     const result = this.findPathToTile(targetCell)
     if (!result.path) {
-      this.player.clearDestination()
+      this.playerController.clearDestination()
       this.pathStatus = result.exhaustedSearchBudget
         ? `path failed: search budget exceeded (${result.visitedNodes})`
         : 'path failed: no route'
@@ -603,18 +821,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (result.path.length <= 1) {
-      this.player.clearDestination()
+      this.playerController.clearDestination()
       this.pathStatus = 'already at target'
       return false
     }
 
-    this.player.setPath(result.path.slice(1).map(node => cellCenter(node.x, node.y)))
+    this.playerController.setPath(result.path.slice(1).map(node => cellCenter(node.x, node.y)))
     this.pathStatus = `${successStatus} (${result.path.length - 1} nodes / budget ${this.getPathSearchBudget()})`
     return true
   }
 
   private repathToActiveGoal(): boolean {
-    const goal = this.player.getFinalDestination()
+    const goal = this.playerController.getFinalDestination()
     if (!goal) {
       return false
     }
@@ -635,10 +853,44 @@ export class GameScene extends Phaser.Scene {
   private findPathToTile(targetCell: { x: number; y: number }) {
     return findPathToTile({
       dungeon: this.dungeon,
-      current: this.player.getMapPosition(),
+      current: this.playerController.getMapPosition(),
       targetCell,
-      playerRadius: PLAYER_RADIUS,
+      playerRadius: this.playerController.getBodyRadius(),
       maxVisitedNodes: this.getPathSearchBudget(),
+      isCellBlocked: (x, y) =>
+        this.isBlockedByMonsterActors(cellCenter(x, y).x, cellCenter(x, y).y, this.playerController.getBodyRadius()),
+    })
+  }
+
+  private canMonsterOccupy(monsterId: string, x: number, y: number): boolean {
+    return canOccupy(this.dungeon, x, y, MONSTER_BODY_RADIUS) &&
+      !this.isBlockedByPlayerActor(x, y, MONSTER_BODY_RADIUS) &&
+      !this.isBlockedByOtherMonsters(monsterId, x, y, MONSTER_BODY_RADIUS)
+  }
+
+  private isBlockedByPlayerActor(x: number, y: number, radius: number): boolean {
+    const playerPosition = this.playerController.getMapPosition()
+    return Phaser.Math.Distance.Between(x, y, playerPosition.x, playerPosition.y) <
+      radius + this.playerController.getBodyRadius()
+  }
+
+  private isBlockedByMonsterActors(x: number, y: number, radius: number): boolean {
+    return this.monsters.some(monster => {
+      const position = monster.controller.getMapPosition()
+      return Phaser.Math.Distance.Between(x, y, position.x, position.y) <
+        radius + monster.controller.getBodyRadius()
+    })
+  }
+
+  private isBlockedByOtherMonsters(monsterId: string, x: number, y: number, radius: number): boolean {
+    return this.monsters.some(monster => {
+      if (monster.id === monsterId) {
+        return false
+      }
+
+      const position = monster.controller.getMapPosition()
+      return Phaser.Math.Distance.Between(x, y, position.x, position.y) <
+        radius + monster.controller.getBodyRadius()
     })
   }
 
@@ -651,7 +903,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshVisibility(): void {
-    this.visibleTiles = computeVisibleTiles(this.dungeon, this.player.getMapPosition(), VISIBILITY_RADIUS)
+    this.visibleTiles = computeVisibleTiles(
+      this.dungeon,
+      this.playerController.getMapPosition(),
+      this.playerCharacter.getVisionRadius()
+    )
   }
 
   private getTileTexture(tile: TileType, gx: number, gy: number): string {
@@ -711,8 +967,16 @@ export class GameScene extends Phaser.Scene {
     this.spawnTile = floor.spawnTile
     this.interactables = floor.interactables
     this.traps = floor.traps
-    this.player.clearDestination()
-    this.player.setMapPosition(floor.spawnPosition.x, floor.spawnPosition.y)
+    destroyDeployableActors(this.deployables)
+    this.deployables = []
+    destroySummonActors(this.summons)
+    this.summons = []
+    destroyProjectileActors(this.projectiles)
+    this.projectiles = []
+    destroyMonsterActors(this.monsters)
+    this.monsters = createMonsterActors(this, floor.monsterSpawns)
+    this.playerController.clearDestination()
+    this.playerController.setMapPosition(floor.spawnPosition.x, floor.spawnPosition.y)
     this.refreshVisibility()
 
     if (resetFloorIndex) {
@@ -748,46 +1012,29 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (!Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-      const nearby = this.getNearbyInteractable()
-      this.interactionStatus = nearby
-        ? `press E: ${nearby.kind}${nearby.used ? ' (used)' : ''}`
-        : 'none'
+      this.interactionStatus = getNearbyInteractionStatus(this.getNearbyInteractable())
       return
     }
 
-    const interactable = this.getNearbyInteractable()
-    if (!interactable) {
-      this.interactionStatus = 'nothing to interact with'
+    const result = resolveSceneInteraction({
+      interactable: this.getNearbyInteractable(),
+      inventories: [this.playerCharacter.getBeltInventory(), this.playerCharacter.getInventory()],
+      journeyLog: this.journeyLog,
+      achievements: this.achievements,
+      consumeKey: () => {
+        const removedFromBelt = removeSingleItemByDefinition(this.playerCharacter.getBeltInventory(), 'utility_key')
+        if (!removedFromBelt) {
+          removeSingleItemByDefinition(this.playerCharacter.getInventory(), 'utility_key')
+        }
+      },
+    })
+
+    if (result.kind === 'blocked') {
+      this.interactionStatus = result.status
       return
     }
 
-    if (interactable.kind === 'chest' || interactable.kind === 'locked-chest') {
-      if (interactable.used) {
-        this.interactionStatus = 'chest already opened'
-        return
-      }
-
-      if (interactable.kind === 'locked-chest' && this.getItemCount('utility_key') <= 0) {
-        this.interactionStatus = 'locked chest: need key'
-        return
-      }
-
-      if (interactable.kind === 'locked-chest') {
-        // Handled by chest interaction rules.
-      }
-
-      const result = openChest({
-        interactable,
-        inventories: [this.beltInventory, this.inventory],
-        journeyLog: this.journeyLog,
-        achievements: this.achievements,
-        consumeKey: () => {
-          const removedFromBelt = removeSingleItemByDefinition(this.beltInventory, 'utility_key')
-          if (!removedFromBelt) {
-            removeSingleItemByDefinition(this.inventory, 'utility_key')
-          }
-        },
-      })
+    if (result.kind === 'open-chest') {
       this.gold += result.goldDelta
       this.applyUnlockedAchievements(result.unlocked)
       this.interactionStatus = result.status
@@ -797,8 +1044,12 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    if (interactable.kind === 'npc') {
-      this.startDialogue(interactable)
+    if (result.kind === 'start-dialogue') {
+      this.playerController.clearDestination()
+      this.activeDialogue = result.dialogue
+      this.applyUnlockedAchievements(result.unlocked)
+      this.saveProgress()
+      this.interactionStatus = result.status
       return
     }
 
@@ -813,18 +1064,166 @@ export class GameScene extends Phaser.Scene {
     this.useInventoryItem('potion_minor')
   }
 
+  private tryFireProjectile(): void {
+    if (this.activeDialogue || this.isDead() || !Phaser.Input.Keyboard.JustDown(this.fireProjectileKey)) {
+      return
+    }
+
+    const attackBundle = this.getCombinedEquippedAttackBundle()
+    if (!attackBundle) {
+      this.interactionStatus = 'no weapon equipped'
+      return
+    }
+
+    const result = executeRuntimeActionBundle({
+      context: this.buildFacingActionContext(),
+      actionBundle: attackBundle,
+      collections: this.getActionExecutionCollections(),
+      successStatus: 'fired combined attack',
+      summonAttackIntervalMs: SUMMON_ATTACK_INTERVAL_MS,
+      summonTargetingRange: SUMMON_TARGETING_RANGE,
+    })
+    this.applyActionExecutionCollections(result)
+    this.interactionStatus = result.status
+  }
+  private updateProjectiles(deltaMs: number): void {
+    if (this.projectiles.length === 0) {
+      return
+    }
+
+    const result = updateProjectileActors({
+      projectiles: this.projectiles,
+      deltaMs,
+      targets: this.buildProjectileTargets(),
+      canTraverse: (x, y, radius) => canOccupy(this.dungeon, x, y, radius),
+    })
+    this.projectiles = result.survivors
+
+    if (result.impacts.length > 0 || result.expirations.length > 0) {
+      this.applyProjectileLifecycle(result.impacts, result.expirations)
+    }
+  }
+
+  private tryDeployAction(): void {
+    if (this.activeDialogue || this.isDead() || !Phaser.Input.Keyboard.JustDown(this.deployActionKey)) {
+      return
+    }
+
+    const deployAction = buildDeployActionSpec(DEPLOY_ACTION_IDS.debugTotem)
+    const result = deployFacingAction({
+      context: this.buildFacingActionContext(),
+      deployAction,
+      deployables: this.deployables,
+    })
+    this.deployables = result.deployables
+    this.interactionStatus = result.deployed
+      ? `deployed ${deployAction.deployableId}`
+      : 'deploy failed: blocked cell'
+  }
+
+  private faceTowardCell(targetCell: { x: number; y: number }): void {
+    const origin = this.playerController.getMapPosition()
+    const target = cellCenter(targetCell.x, targetCell.y)
+    const facing = new Phaser.Math.Vector2(target.x - origin.x, target.y - origin.y)
+    if (facing.lengthSq() === 0) {
+      return
+    }
+
+    this.playerController.setFacing(facing.x, facing.y)
+    this.playerController.clearDestination()
+  }
+
+  private getCombinedEquippedAttackBundle(): ActionBundle | null {
+    return buildEquippedActionBundle(
+      this.playerCharacter.getInventory(),
+      this.playerCharacter.getEquipmentLoadout()
+    )
+  }
+
+  private buildFacingActionContext() {
+    return {
+      scene: this as Phaser.Scene,
+      dungeon: this.dungeon,
+      nowMs: this.time.now,
+      ownerId: this.playerCharacter.id,
+      origin: this.playerController.getMapPosition(),
+      facing: this.playerController.getFacing(),
+    }
+  }
+
+  private getActionExecutionCollections() {
+    return {
+      deployables: this.deployables,
+      summons: this.summons,
+      projectiles: this.projectiles,
+    }
+  }
+
+  private applyActionExecutionCollections(collections: {
+    deployables: DeployableActor[]
+    summons: SummonActor[]
+    projectiles: ProjectileActor[]
+  }): void {
+    this.deployables = collections.deployables
+    this.summons = collections.summons
+    this.projectiles = collections.projectiles
+  }
+
+  private findNearestMonster(x: number, y: number, range: number): MonsterActor | null {
+    let nearest: MonsterActor | null = null
+    let nearestDistance = Number.POSITIVE_INFINITY
+
+    for (const monster of this.monsters) {
+      const position = monster.controller.getMapPosition()
+      const distance = Phaser.Math.Distance.Between(x, y, position.x, position.y)
+      if (distance > range || distance >= nearestDistance) {
+        continue
+      }
+
+      nearest = monster
+      nearestDistance = distance
+    }
+
+    return nearest
+  }
+
+  private launchProjectileFromPosition(
+    attackerId: string,
+    origin: Phaser.Math.Vector2,
+    target: Phaser.Math.Vector2,
+    attackSpec: ProjectileActionSpec,
+    successStatus: string
+  ): void {
+    const result = launchRuntimeProjectileFromPosition({
+      scene: this,
+      nowMs: this.time.now,
+      attackerId,
+      origin,
+      target,
+      attackSpec,
+      projectiles: this.projectiles,
+      successStatus,
+    })
+    this.projectiles = result.projectiles
+    if (result.launched) {
+      this.interactionStatus = result.status
+    }
+  }
+
   private tryTriggerTrap(): void {
-    const current = this.player.getMapPosition()
+    const current = this.playerController.getMapPosition()
     const tileX = Phaser.Math.Clamp(Math.floor(current.x), 0, this.dungeon.width - 1)
     const tileY = Phaser.Math.Clamp(Math.floor(current.y), 0, this.dungeon.height - 1)
-    const result = triggerTrap({
+    const result = resolveTrapSurvival({
       trap: this.traps.find(candidate => candidate.tileX === tileX && candidate.tileY === tileY),
-      now: this.time.now,
+      nowMs: this.time.now,
       trapRearmMs: TRAP_REARM_MS,
       trapDamageAmount: TRAP_DAMAGE_AMOUNT,
+      poisonDamagePerSecond: POISON_DOT_DAMAGE_PER_SECOND,
       health: this.playerCharacter.getHealth(),
       poisoned: this.playerCharacter.isPoisoned(),
       guardActive: this.playerCharacter.isGuardActive(this.getEffectRuntimeNowMs()),
+      effectRuntimeSceneState: this.effectRuntimeSceneState,
     })
     if (!result.triggered) {
       return
@@ -832,13 +1231,6 @@ export class GameScene extends Phaser.Scene {
 
     this.playerCharacter.setHealth(result.health)
     this.playerCharacter.setPoisoned(result.poisoned)
-    applyTrapRuntimeEffects({
-      sceneState: this.effectRuntimeSceneState,
-      nowMs: this.getEffectRuntimeNowMs(),
-      poisonedDurationMs: result.poisonedDurationMs,
-      slowDurationMs: result.slowDurationMs,
-      slowStatModifiers: result.slowStatModifiers,
-    })
     this.refreshCharacterStatSources(this.getEffectRuntimeNowMs())
     this.interactionStatus = result.status
     this.syncEffectRuntimeState()
@@ -850,7 +1242,7 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    const result = applyDebugDamage(this.playerCharacter.getHealth(), DEBUG_DAMAGE_AMOUNT)
+    const result = resolveDebugDamageSurvival(this.playerCharacter.getHealth(), DEBUG_DAMAGE_AMOUNT)
     this.playerCharacter.setHealth(result.health)
     this.interactionStatus = result.status
     this.syncEffectRuntimeState()
@@ -862,17 +1254,20 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    const spawn = getRespawnPosition(this.spawnTile)
-    this.player.clearDestination()
-    this.player.setMapPosition(spawn.x, spawn.y)
-    this.player.commitMapPosition(spawn.x, spawn.y)
-    this.playerCharacter.setHealth(
-      getRespawnHealth(this.playerCharacter.getMaxHealth(), RESPAWN_HEALTH_RATIO)
-    )
-    this.playerCharacter.setPoisoned(false)
-    this.playerCharacter.setGuardBuffRemainingMs(0, this.getEffectRuntimeNowMs())
-    clearEffectRuntimeDebuffs(this.effectRuntimeSceneState)
-    this.interactionStatus = `respawned on floor ${this.floorIndex}`
+    const result = resolveRespawnSurvival({
+      spawnTile: this.spawnTile,
+      maxHealth: this.playerCharacter.getMaxHealth(),
+      respawnHealthRatio: RESPAWN_HEALTH_RATIO,
+      floorIndex: this.floorIndex,
+      effectRuntimeSceneState: this.effectRuntimeSceneState,
+    })
+    this.playerController.clearDestination()
+    this.playerController.setMapPosition(result.spawn.x, result.spawn.y)
+    this.playerController.commitMapPosition(result.spawn.x, result.spawn.y)
+    this.playerCharacter.setHealth(result.health)
+    this.playerCharacter.setPoisoned(result.poisoned)
+    this.playerCharacter.setGuardBuffRemainingMs(result.guardBuffRemainingMs, this.getEffectRuntimeNowMs())
+    this.interactionStatus = result.status
     this.syncEffectRuntimeState()
     this.saveProgress()
   }
@@ -890,10 +1285,10 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
-    const result = addInventoryItems(this.inventory, TEST_SHAPE_ITEM_DEFINITION_IDS)
-    const beltResult = addInventoryItems(this.beltInventory, TEST_BELT_ITEM_DEFINITION_IDS)
+    const result = addInventoryItems(this.playerCharacter.getInventory(), TEST_SHAPE_ITEM_DEFINITION_IDS)
+    const beltResult = addInventoryItems(this.playerCharacter.getBeltInventory(), TEST_BELT_ITEM_DEFINITION_IDS)
     this.interactionStatus =
-      `added shapes ${result.addedCount}, belt consumables ${beltResult.addedCount}` +
+      `added shape items ${result.addedCount}, belt usable items ${beltResult.addedCount}` +
       ((result.failedItemDefinitionIds.length + beltResult.failedItemDefinitionIds.length) > 0
         ? `, failed ${result.failedItemDefinitionIds.length + beltResult.failedItemDefinitionIds.length}`
         : '')
@@ -904,24 +1299,398 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getNearbyInteractable(): Interactable | null {
-    return findNearbyInteractable(this.interactables, this.player.getMapPosition(), INTERACTION_RANGE)
-  }
+  private applyEquipmentPanelSelection(target: EquipmentSlotTarget): void {
+    const selectedItemInstanceId = this.getSelectedInventoryItemInstanceId()
+    const nextLoadout = selectedItemInstanceId
+      ? (() => {
+          return assignItemToEquipmentTarget({
+            inventory: this.playerCharacter.getInventory(),
+            loadout: this.playerCharacter.getEquipmentLoadout(),
+            itemInstanceId: selectedItemInstanceId,
+            target,
+          })
+        })()
+      : clearEquipmentTarget(this.playerCharacter.getEquipmentLoadout(), target)
 
-  private startDialogue(interactable: Interactable): void {
-    const result = startNpcDialogue(interactable, this.journeyLog, this.achievements)
-    if (!result.dialogue) {
-      this.interactionStatus = result.status
+    if (!nextLoadout) {
+      this.interactionStatus = 'cannot equip item there'
       return
     }
 
-    this.player.clearDestination()
-    this.activeDialogue = result.dialogue
-    this.applyUnlockedAchievements(result.unlocked)
+    this.playerCharacter.setEquipmentLoadout(nextLoadout)
+    this.refreshCharacterStatSources(this.getEffectRuntimeNowMs())
+    this.syncEffectRuntimeState()
     this.saveProgress()
-    this.interactionStatus = result.status
+    this.interactionStatus = selectedItemInstanceId ? 'equipment updated' : 'equipment cleared'
   }
 
+  private tryDropDraggedEquipmentIntoInventory(
+    target: EquipmentSlotTarget,
+    screenX: number,
+    screenY: number
+  ): boolean {
+    const inventory = this.playerCharacter.getInventory()
+    const beltInventory = this.playerCharacter.getBeltInventory()
+    const instanceId = getEquipmentTargetInstanceId(this.playerCharacter.getEquipmentLoadout(), target)
+    if (!instanceId) {
+      return false
+    }
+
+    const stackId = getStackIdByItemInstanceId(inventory, instanceId)
+    if (!stackId) {
+      return false
+    }
+
+    const dropCell = this.inventoryPanel.getDropCellAt(
+      screenX,
+      screenY,
+      this.scale.width,
+      inventory,
+      beltInventory
+    )
+    if (dropCell?.inventoryKind === 'inventory') {
+      const moved = moveInventoryStack(inventory, stackId, dropCell.x, dropCell.y)
+      if (!moved) {
+        this.interactionStatus = 'cannot place equipped item there'
+        return true
+      }
+    } else {
+      const equipmentDrop = this.equipmentPanel.handlePointerUp(screenX, screenY)
+      if (!equipmentDrop.target) {
+        return false
+      }
+    }
+
+    this.playerCharacter.setEquipmentLoadout(clearEquipmentTarget(this.playerCharacter.getEquipmentLoadout(), target))
+    this.refreshCharacterStatSources(this.getEffectRuntimeNowMs())
+    this.syncEffectRuntimeState()
+    this.saveProgress()
+    this.interactionStatus = 'equipment removed'
+    return true
+  }
+
+  private isEquipmentTargetFilled(target: EquipmentSlotTarget): boolean {
+    return Boolean(getEquipmentTargetInstanceId(this.playerCharacter.getEquipmentLoadout(), target))
+  }
+
+  private getSelectedInventoryItemInstanceId(): string | null {
+    const selectedStackId = this.inventoryPanel.getSelectedStackId()
+    if (!selectedStackId) {
+      return null
+    }
+
+    return getStackPrimaryItemInstanceId(this.playerCharacter.getInventory(), selectedStackId) ??
+      getStackPrimaryItemInstanceId(this.playerCharacter.getBeltInventory(), selectedStackId)
+  }
+
+  private getSelectedInventoryItemDefinitionId(): string | null {
+    const instanceId = this.getSelectedInventoryItemInstanceId()
+    if (!instanceId) {
+      return null
+    }
+
+    return this.playerCharacter.getInventory().itemInstances.find(item => item.instanceId === instanceId)?.itemDefinitionId ??
+      this.playerCharacter.getBeltInventory().itemInstances.find(item => item.instanceId === instanceId)?.itemDefinitionId ??
+      null
+  }
+
+  private buildProjectileTargets(): ProjectileTarget[] {
+    return [
+      {
+        id: this.playerCharacter.id,
+        character: this.playerCharacter,
+        controller: this.playerController,
+      },
+      ...this.monsters.map(monster => ({
+        id: monster.id,
+        character: monster.character,
+        controller: monster.controller,
+      })),
+    ]
+  }
+
+  private applyProjectileLifecycle(
+    impacts: ProjectileImpact[],
+    expirations: ProjectileExpiration[]
+  ): void {
+    let removedMonster = false
+    let shouldSyncPlayerRuntime = false
+
+    for (const impact of impacts) {
+      for (const event of impact.events) {
+        const result = this.applyProjectileLifecycleEvent({
+          attackerId: impact.attackerId,
+          primaryTargetId: impact.targetId,
+          origin: impact.position,
+          direction: impact.direction,
+          hitDistance: impact.hit.distanceFromCenter,
+          event,
+        })
+        removedMonster = removedMonster || result.removedMonster
+        shouldSyncPlayerRuntime = shouldSyncPlayerRuntime || result.shouldSyncPlayerRuntime
+      }
+    }
+
+    for (const expiration of expirations) {
+      for (const event of expiration.events) {
+        const result = this.applyProjectileLifecycleEvent({
+          attackerId: expiration.attackerId,
+          primaryTargetId: null,
+          origin: expiration.position,
+          direction: expiration.direction,
+          event,
+        })
+        removedMonster = removedMonster || result.removedMonster
+        shouldSyncPlayerRuntime = shouldSyncPlayerRuntime || result.shouldSyncPlayerRuntime
+      }
+    }
+
+    if (removedMonster) {
+      this.monsters = this.monsters.filter(monster => !monster.character.isDead())
+    }
+
+    if (shouldSyncPlayerRuntime) {
+      this.refreshCharacterStatSources(this.getEffectRuntimeNowMs())
+      this.syncEffectRuntimeState()
+    }
+  }
+
+  private applyProjectileLifecycleEvent(params: {
+    attackerId: string | null
+    primaryTargetId: string | null
+    origin: Phaser.Math.Vector2
+    direction: Phaser.Math.Vector2
+    event: ProjectileLifecycleEvent
+    hitDistance?: number
+  }): { removedMonster: boolean; shouldSyncPlayerRuntime: boolean } {
+    if (params.event.type === 'direct_damage') {
+      return this.applyProjectileDamageToTarget(
+        params.primaryTargetId,
+        params.event.amount,
+        params.hitDistance
+      )
+    }
+
+    if (params.event.type === 'apply_debuff') {
+      return this.applyProjectileDebuffToTarget(params.primaryTargetId, params.event.debuff)
+    }
+
+    if (params.event.type === 'area_damage') {
+      return this.applyProjectileAreaDamage({
+        attackerId: params.attackerId,
+        primaryTargetId: params.primaryTargetId,
+        origin: params.origin,
+        event: params.event,
+      })
+    }
+
+    if (params.event.type === 'spawn_projectile') {
+      this.spawnProjectileLifecycleEventProjectiles({
+        origin: params.origin,
+        direction: params.direction,
+        attackerId: params.attackerId ?? this.playerCharacter.id,
+        event: params.event,
+      })
+    }
+
+    return {
+      removedMonster: false,
+      shouldSyncPlayerRuntime: false,
+    }
+  }
+
+  private applyProjectileDamageToTarget(
+    targetId: string | null,
+    amount: number,
+    hitDistance?: number
+  ): { removedMonster: boolean; shouldSyncPlayerRuntime: boolean } {
+    if (!targetId) {
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    if (targetId === this.playerCharacter.id) {
+      this.playerCharacter.setHealth(this.playerCharacter.getHealth() - amount)
+      this.interactionStatus = `player hit for ${amount}${typeof hitDistance === 'number' ? ` at ${hitDistance.toFixed(2)}` : ''}`
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    const monster = this.monsters.find(candidate => candidate.id === targetId)
+    if (!monster) {
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    monster.character.setHealth(monster.character.getHealth() - amount)
+    this.interactionStatus =
+      `${monster.character.displayName} hit for ${amount}${typeof hitDistance === 'number' ? ` at ${hitDistance.toFixed(2)}` : ''}`
+    if (monster.character.isDead()) {
+      monster.entity.destroy()
+      return {
+        removedMonster: true,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    return {
+      removedMonster: false,
+      shouldSyncPlayerRuntime: false,
+    }
+  }
+
+  private applyProjectileDebuffToTarget(
+    targetId: string | null,
+    debuff: Extract<ProjectileLifecycleEvent, { type: 'apply_debuff' }>['debuff']
+  ): { removedMonster: boolean; shouldSyncPlayerRuntime: boolean } {
+    if (!targetId) {
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    if (targetId === this.playerCharacter.id) {
+      this.effectRuntimeSceneState.activeDebuffs = upsertEffectDebuff({
+        debuffs: this.effectRuntimeSceneState.activeDebuffs,
+        id: debuff.id,
+        displayName: debuff.displayName,
+        durationMs: debuff.durationMs,
+        nowMs: this.getEffectRuntimeNowMs(),
+        statModifiers: debuff.statModifiers,
+        damagePerSecond: debuff.damagePerSecond,
+        blocksHealthRegen: debuff.blocksHealthRegen,
+        guardMitigatesDamage: debuff.guardMitigatesDamage,
+      })
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: true,
+      }
+    }
+
+    const monster = this.monsters.find(candidate => candidate.id === targetId)
+    if (!monster) {
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    applyDebuffToCharacter({
+      character: monster.character,
+      nowMs: this.getEffectRuntimeNowMs(),
+      debuff,
+    })
+    monster.controller.syncMoveSpeedFromCharacter()
+    return {
+      removedMonster: false,
+      shouldSyncPlayerRuntime: false,
+    }
+  }
+
+  private applyProjectileAreaDamage(params: {
+    attackerId: string | null
+    primaryTargetId: string | null
+    origin: Phaser.Math.Vector2
+    event: Extract<ProjectileLifecycleEvent, { type: 'area_damage' }>
+  }): { removedMonster: boolean; shouldSyncPlayerRuntime: boolean } {
+    if (!params.attackerId) {
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    const targets = this.buildProjectileTargets()
+    const attacker = targets.find(target => target.id === params.attackerId)
+    if (!attacker) {
+      return {
+        removedMonster: false,
+        shouldSyncPlayerRuntime: false,
+      }
+    }
+
+    let removedMonster = false
+    let shouldSyncPlayerRuntime = false
+    const candidates: { targetId: string; distanceFromCenter: number }[] = []
+
+    for (const target of targets) {
+      if (!params.event.includeAttacker && target.id === params.attackerId) {
+        continue
+      }
+      if (!params.event.includePrimaryTarget && params.primaryTargetId === target.id) {
+        continue
+      }
+      if (
+        target.id !== params.attackerId &&
+        !canCharacterAttackCharacter(attacker.character, target.character)
+      ) {
+        continue
+      }
+
+      const hit = target.controller.evaluateAreaHit(params.origin.x, params.origin.y, params.event.radius)
+      if (!hit.hit) {
+        continue
+      }
+
+      candidates.push({
+        targetId: target.id,
+        distanceFromCenter: hit.distanceFromCenter,
+      })
+    }
+
+    const resolvedHits = resolveProjectileAreaDamageHits({
+      event: params.event,
+      candidates,
+    })
+
+    for (const hit of resolvedHits) {
+      const result = this.applyProjectileDamageToTarget(hit.targetId, hit.damage, hit.distanceFromCenter)
+      removedMonster = removedMonster || result.removedMonster
+      shouldSyncPlayerRuntime = shouldSyncPlayerRuntime || result.shouldSyncPlayerRuntime
+    }
+
+    return {
+      removedMonster,
+      shouldSyncPlayerRuntime,
+    }
+  }
+
+  private spawnProjectileLifecycleEventProjectiles(params: {
+    attackerId: string
+    origin: Phaser.Math.Vector2
+    direction: Phaser.Math.Vector2
+    event: Extract<ProjectileLifecycleEvent, { type: 'spawn_projectile' }>
+  }): void {
+    const count = Math.max(1, params.event.count ?? 1)
+    const spreadDegrees = params.event.spreadDegrees ?? 0
+    const baseOffsetDegrees = params.event.angleOffsetDegrees ?? 0
+
+    for (let index = 0; index < count; index++) {
+      const t = count === 1 ? 0.5 : index / (count - 1)
+      const offsetDegrees = baseOffsetDegrees + ((t - 0.5) * spreadDegrees)
+      const direction = params.direction.clone().rotate(Phaser.Math.DegToRad(offsetDegrees))
+      const projectileDefinition = getProjectileDefinition(params.event.projectile.definitionId)
+      const target = params.origin.clone().add(direction.scale(projectileDefinition.maxRange))
+      this.launchProjectileFromPosition(
+        params.attackerId,
+        params.origin,
+        target,
+        params.event.projectile,
+        'spawned projectile'
+      )
+    }
+  }
+
+  private getNearbyInteractable(): Interactable | null {
+    return findNearbyInteractable(this.interactables, this.playerController.getMapPosition(), INTERACTION_RANGE)
+  }
   private advanceDialogue(): void {
     if (!this.activeDialogue) {
       return
@@ -948,9 +1717,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createProgressSnapshot(): ProgressSnapshot {
-    const effectNowMs = this.getEffectRuntimeNowMs()
-
-    return createStoredProgressSnapshot({
+    return createGameSceneProgressSnapshot({
       floorIndex: this.floorIndex,
       gold: this.gold,
       jobId: this.playerCharacter.getJobId(),
@@ -959,48 +1726,54 @@ export class GameScene extends Phaser.Scene {
       mana: this.playerCharacter.getMana(),
       maxMana: this.playerCharacter.getMaxMana(),
       poisoned: this.playerCharacter.isPoisoned(),
-      guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(effectNowMs),
-      ...createEffectRuntimeProgressData(this.effectRuntimeSceneState, {
-        activeItemBuffs: serializeActiveItemBuffs,
-        itemCooldowns: serializeItemCooldowns,
-        timedModifiers: serializeTimedModifiers,
-      }),
-      inventory: this.inventory,
-      beltInventory: this.beltInventory,
+      guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(this.getEffectRuntimeNowMs()),
+      effectRuntimeSceneState: this.effectRuntimeSceneState,
+      inventory: this.playerCharacter.getInventory(),
+      beltInventory: this.playerCharacter.getBeltInventory(),
       journeyLog: this.journeyLog,
       achievements: this.achievements,
+      serialize: {
+        activeItemBuffs: serializeActiveItemBuffs,
+        itemCooldowns: serializeItemCooldowns,
+        activeDebuffs: serializeEffectDebuffs,
+      },
     })
   }
 
   private applyProgressSnapshot(snapshot: ProgressSnapshot): void {
-    const loaded = applyStoredProgressSnapshot(snapshot, {
+    const loaded = applyGameSceneProgressSnapshot({
+      snapshot,
       defaultHealth: this.playerCharacter.getMaxHealth(),
       defaultMana: this.playerCharacter.getMaxMana(),
       inventoryCols: INVENTORY_COLS,
       inventoryRows: INVENTORY_ROWS,
       beltCols: BELT_COLS,
       beltRows: BELT_ROWS,
+      nowMs: this.time.now,
+      restore: {
+        activeItemBuffs: restoreActiveItemBuffs,
+        itemCooldowns: restoreItemCooldowns,
+        activeDebuffs: restoreEffectDebuffs,
+      },
     })
 
-    this.floorIndex = loaded.runtime.floorIndex
-    this.gold = loaded.runtime.gold
+    this.floorIndex = loaded.floorIndex
+    this.gold = loaded.gold
     restoreEffectRuntimeCollections({
       sceneState: this.effectRuntimeSceneState,
       nowMs: this.time.now,
-      poisonedRemainingMs: loaded.runtime.poisonedRemainingMs,
-      restoreActiveItemBuffs: nowMs => restoreActiveItemBuffs(loaded.runtime.activeItemBuffs, nowMs),
-      restoreItemCooldowns: nowMs => restoreItemCooldowns(loaded.runtime.itemCooldowns, nowMs),
-      restoreTimedModifiers: nowMs => restoreTimedModifiers(loaded.runtime.timedModifiers, nowMs),
+      restoreActiveItemBuffs: () => loaded.effectRuntime.activeItemBuffs,
+      restoreItemCooldowns: () => loaded.effectRuntime.itemCooldowns,
+      restoreActiveDebuffs: () => loaded.effectRuntime.activeDebuffs,
     })
     this.playerCharacter.applyRuntimeSnapshot({
-      jobId: loaded.runtime.jobId,
-      health: loaded.runtime.health,
-      mana: loaded.runtime.mana,
-      poisoned: loaded.runtime.poisoned,
-      guardBuffRemainingMs: loaded.runtime.guardBuffRemainingMs,
+      jobId: loaded.jobId,
+      health: loaded.health,
+      mana: loaded.mana,
+      poisoned: loaded.poisoned,
+      guardBuffRemainingMs: loaded.guardBuffRemainingMs,
     }, this.time.now)
-    this.inventory = loaded.runtime.inventory
-    this.beltInventory = loaded.runtime.beltInventory
+    this.playerCharacter.setInventoryStates(loaded.inventory, loaded.beltInventory)
     this.journeyLog = loaded.journeyLog
     this.achievements = loaded.achievements
     this.refreshCharacterStatSources(this.getEffectRuntimeNowMs())
@@ -1008,18 +1781,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getItemCount(itemDefinitionId: string): number {
-    return getItemCountAcrossInventories([this.beltInventory, this.inventory], itemDefinitionId)
+    return getItemCountAcrossInventories(
+      [this.playerCharacter.getBeltInventory(), this.playerCharacter.getInventory()],
+      itemDefinitionId
+    )
   }
 
   private getInventorySummaryText(): string {
     return [
-      `belt: ${getInventorySummaryText(this.beltInventory)}`,
-      `bag: ${getInventorySummaryText(this.inventory)}`,
+      `belt: ${summarizeInventory(this.playerCharacter.getBeltInventory())}`,
+      `bag: ${summarizeInventory(this.playerCharacter.getInventory())}`,
     ].join(' | ')
   }
 
   private isDead(): boolean {
-    return this.playerCharacter.isDead()
+    return isDead(this.playerCharacter.getHealth())
   }
 
   private applyUnlockedAchievements(labels: string[]): void {
@@ -1033,8 +1809,8 @@ export class GameScene extends Phaser.Scene {
   private useInventoryItem(itemDefinitionId: string): void {
     const effectNowMs = this.getEffectRuntimeNowMs()
     const result = runInventoryItemUseFlow({
-      beltInventory: this.beltInventory,
-      inventory: this.inventory,
+      beltInventory: this.playerCharacter.getBeltInventory(),
+      inventory: this.playerCharacter.getInventory(),
       itemDefinitionId,
       health: this.playerCharacter.getHealth(),
       maxHealth: this.playerCharacter.getMaxHealth(),
@@ -1059,26 +1835,26 @@ export class GameScene extends Phaser.Scene {
     this.saveProgress()
   }
 
-  private getGuardStatusText(): string {
-    const remainingMs = this.playerCharacter.getGuardBuffRemainingMs(this.getEffectRuntimeNowMs())
-    if (remainingMs <= 0) {
-      return 'off'
-    }
-
-    return `${(remainingMs / 1000).toFixed(1)}s`
-  }
-
   private refreshCharacterStatSources(nowMs: number): void {
-    this.playerCharacter.setEquipmentBonuses(getInventoryEquipmentStatBonuses(this.inventory))
+    const currentLoadout = reconcileCharacterEquipmentLoadout(
+      this.playerCharacter.getInventory(),
+      this.playerCharacter.getEquipmentLoadout()
+    )
+    this.playerCharacter.setEquipmentLoadout(
+      isCharacterEquipmentLoadoutEmpty(currentLoadout)
+        ? buildAutomaticEquipmentLoadout(this.playerCharacter.getInventory())
+        : currentLoadout
+    )
+    this.playerCharacter.setEquipmentBonuses(
+      getEquipmentStatBonuses(this.playerCharacter.getInventory(), this.playerCharacter.getEquipmentLoadout())
+    )
     this.playerCharacter.setPotionBonuses(
       getActiveItemBuffStatBonuses(this.effectRuntimeSceneState.activeItemBuffs, nowMs)
     )
-    this.playerCharacter.setTemporaryBonuses(
-      this.effectRuntimeSceneState.timedModifiers.map(modifier => modifier.modifiers)
-    )
-    if (this.player) {
-      this.player.setMoveSpeed(this.playerCharacter.getMoveSpeed())
-    }
+    this.playerCharacter.setTemporaryBonuses(getActiveDebuffStatModifiers(this.effectRuntimeSceneState))
+    this.playerCharacter.setActiveItemBuffs(this.effectRuntimeSceneState.activeItemBuffs)
+    this.playerCharacter.setActiveDebuffs(this.effectRuntimeSceneState.activeDebuffs)
+    this.playerController.syncMoveSpeedFromCharacter()
   }
 
   private getEffectRuntimeNowMs(): number {
@@ -1100,7 +1876,6 @@ export class GameScene extends Phaser.Scene {
         manaRegen: this.playerCharacter.getManaRegen(),
         poisoned: this.playerCharacter.isPoisoned(),
         guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(this.getEffectRuntimeNowMs()),
-        poisonDamagePerSecond: DEFAULT_POISON_DAMAGE_PER_SECOND,
       }),
       onState: (revision, state) => {
         this.handleEffectRuntimeState(revision, state)
@@ -1121,7 +1896,6 @@ export class GameScene extends Phaser.Scene {
         manaRegen: this.playerCharacter.getManaRegen(),
         poisoned: this.playerCharacter.isPoisoned(),
         guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(this.getEffectRuntimeNowMs()),
-        poisonDamagePerSecond: DEFAULT_POISON_DAMAGE_PER_SECOND,
       })
     )
     if (revision) {
@@ -1155,7 +1929,6 @@ export class GameScene extends Phaser.Scene {
       manaRegen: this.playerCharacter.getManaRegen(),
       poisoned: this.playerCharacter.isPoisoned(),
       guardBuffRemainingMs: this.playerCharacter.getGuardBuffRemainingMs(state.currentTimeMs),
-      poisonDamagePerSecond: DEFAULT_POISON_DAMAGE_PER_SECOND,
     })
     if (!areEffectRuntimeStatesEqual(state, reconciledState)) {
       const nextRevision = this.effectRuntimeClient?.syncState(reconciledState)

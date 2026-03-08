@@ -1,6 +1,10 @@
 import { cellCenter } from '../iso'
 import type { CharacterStatModifier } from '../characters/CharacterStatRules'
-import { getItemDefinition, type ItemCooldownGroup } from '../items/ItemCatalog'
+import {
+  getItemDefinition,
+  isUsableItemDefinition,
+  type ItemCooldownGroup,
+} from '../items/ItemCatalog'
 import { removeSingleItemByDefinition, type InventoryState } from '../items/Inventory'
 import type { Trap } from '../world/WorldObjects'
 
@@ -57,6 +61,18 @@ export function applyInventoryItemUse(params: {
   poisoned: boolean
 }): InventoryItemUseResult {
   const definition = getItemDefinition(params.itemDefinitionId)
+  if (!isUsableItemDefinition(definition)) {
+    return {
+      used: false,
+      health: params.health,
+      mana: params.mana,
+      poisoned: params.poisoned,
+      guardDurationMs: 0,
+      statBuffDurationMs: 0,
+      cooldownMs: 0,
+      status: `${definition.name} cannot be used right now`,
+    }
+  }
 
   if (
     !definition.healAmount &&

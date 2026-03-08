@@ -35,6 +35,7 @@ export function resolveCharacterStats(input: CharacterStatComputationInput): Cha
 
   resolved.maxHealth = Math.max(1, resolved.maxHealth)
   resolved.maxMana = Math.max(0, resolved.maxMana)
+  resolved.visionRadius = Math.max(1, resolved.visionRadius)
   resolved.healthRegen = Math.max(0, resolved.healthRegen)
   resolved.manaRegen = Math.max(0, resolved.manaRegen)
   resolved.moveSpeed = Math.max(0.1, resolved.moveSpeed)

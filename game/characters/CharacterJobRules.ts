@@ -3,6 +3,7 @@ import type { CharacterStatModifier } from './CharacterStatRules'
 export type CharacterJobId = 'warrior' | 'mage' | 'rogue'
 
 export interface CharacterCombatStats {
+  visionRadius: number
   maxHealth: number
   maxMana: number
   healthRegen: number
@@ -26,6 +27,7 @@ export interface CharacterJobDefinition {
 }
 
 export const DEFAULT_CHARACTER_STATS: CharacterCombatStats = {
+  visionRadius: 12,
   maxHealth: 100,
   maxMana: 50,
   healthRegen: 1,
@@ -47,6 +49,7 @@ const CHARACTER_JOB_DEFINITIONS: Record<CharacterJobId, CharacterJobDefinition> 
     label: 'Warrior',
     description: 'High durability frontliner with stable physical damage.',
     statModifiers: {
+      visionRadius: 11,
       maxHealth: 145,
       maxMana: 30,
       healthRegen: 1.4,
@@ -67,6 +70,7 @@ const CHARACTER_JOB_DEFINITIONS: Record<CharacterJobId, CharacterJobDefinition> 
     label: 'Mage',
     description: 'Fragile caster with a deep mana pool.',
     statModifiers: {
+      visionRadius: 14,
       maxHealth: 80,
       maxMana: 130,
       healthRegen: 0.7,
@@ -87,6 +91,7 @@ const CHARACTER_JOB_DEFINITIONS: Record<CharacterJobId, CharacterJobDefinition> 
     label: 'Rogue',
     description: 'Mobile skirmisher with balanced survival and offense.',
     statModifiers: {
+      visionRadius: 13,
       maxHealth: 100,
       maxMana: 50,
       healthRegen: 1,

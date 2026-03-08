@@ -3,7 +3,7 @@ import type { BSPDungeon } from '../map/BSPDungeon'
 import type { IsoPoint } from '../iso'
 import { cellCenter } from '../iso'
 import { rollChestReward } from '../loot/ChestRewards'
-import type { Interactable, InteractableKind, Trap } from './WorldObjects'
+import type { Interactable, InteractableKind, MonsterSpawn, Trap } from './WorldObjects'
 
 export function bakeWorldTextures(scene: Phaser.Scene): void {
   bakeInteractableTexture(scene, 'interactable-chest', 0x8b5a2b, 0xfacc15)
@@ -29,7 +29,7 @@ export function buildWorldObjects(
   startX: number,
   startY: number,
   trapRearmMs: number
-): { interactables: Interactable[]; traps: Trap[] } {
+): { interactables: Interactable[]; traps: Trap[]; monsterSpawns: MonsterSpawn[] } {
   const interactables: Interactable[] = []
   const rooms = dungeon.getRooms()
   const candidateRooms = rooms.filter(room => !(room.centerX === startX && room.centerY === startY))
@@ -61,6 +61,7 @@ export function buildWorldObjects(
   return {
     interactables,
     traps: buildTraps(scene, dungeon, interactables, startX, startY, trapRearmMs),
+    monsterSpawns: buildMonsterSpawns(dungeon, interactables, startX, startY),
   }
 }
 
@@ -168,5 +169,29 @@ function buildTraps(
     tileY: candidate.y,
     image: scene.add.image(-9999, -9999, 'trap-spike'),
     lastTriggeredAt: -trapRearmMs,
+  }))
+}
+
+function buildMonsterSpawns(
+  dungeon: BSPDungeon,
+  interactables: Interactable[],
+  startX: number,
+  startY: number
+): MonsterSpawn[] {
+  const occupiedTiles = new Set(interactables.map(interactable => `${interactable.tileX},${interactable.tileY}`))
+  const candidates = dungeon.getRooms()
+    .map(room => ({ x: room.centerX, y: room.centerY }))
+    .filter(candidate => {
+      if ((candidate.x === startX && candidate.y === startY) || occupiedTiles.has(`${candidate.x},${candidate.y}`)) {
+        return false
+      }
+
+      return dungeon.isWalkable(candidate.x, candidate.y)
+    })
+
+  return candidates.slice(0, 3).map(candidate => ({
+    id: `monster-${candidate.x}-${candidate.y}`,
+    tileX: candidate.x,
+    tileY: candidate.y,
   }))
 }

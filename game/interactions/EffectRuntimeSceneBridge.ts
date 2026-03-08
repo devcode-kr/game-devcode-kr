@@ -1,26 +1,21 @@
 import type { ActiveItemBuffRuntime, ActiveItemBuffSnapshot } from '../items/ItemStatRules'
 import type { ItemCooldownRuntime, ItemCooldownSnapshot } from '../items/ItemCooldownRules'
-import type { TimedModifierRuntime, TimedModifierSnapshot } from './TimedModifierRules'
 import type { EffectRuntimeState } from './EffectRuntimeProtocol'
-
-export const DEFAULT_POISON_DAMAGE_PER_SECOND = 3
+import type { EffectDebuffRuntime, EffectDebuffSnapshot } from './EffectDebuffRules'
 
 export interface EffectRuntimeSceneState {
   nowMs: number
   healthRegenRemainder: number
   manaRegenRemainder: number
-  poisonedRemainingMs: number
-  poisonDamageRemainder: number
   activeItemBuffs: ActiveItemBuffRuntime[]
   itemCooldowns: ItemCooldownRuntime[]
-  timedModifiers: TimedModifierRuntime[]
+  activeDebuffs: EffectDebuffRuntime[]
 }
 
 export interface EffectRuntimeProgressData {
-  poisonedRemainingMs: number
   activeItemBuffs: ActiveItemBuffSnapshot[]
   itemCooldowns: ItemCooldownSnapshot[]
-  timedModifiers: TimedModifierSnapshot[]
+  activeDebuffs: EffectDebuffSnapshot[]
 }
 
 export function createInitialEffectRuntimeSceneState(nowMs: number): EffectRuntimeSceneState {
@@ -28,11 +23,9 @@ export function createInitialEffectRuntimeSceneState(nowMs: number): EffectRunti
     nowMs,
     healthRegenRemainder: 0,
     manaRegenRemainder: 0,
-    poisonedRemainingMs: 0,
-    poisonDamageRemainder: 0,
     activeItemBuffs: [],
     itemCooldowns: [],
-    timedModifiers: [],
+    activeDebuffs: [],
   }
 }
 
@@ -46,7 +39,6 @@ export function buildEffectRuntimeState(params: {
   manaRegen: number
   poisoned: boolean
   guardBuffRemainingMs: number
-  poisonDamagePerSecond?: number
 }): EffectRuntimeState {
   return {
     currentTimeMs: params.sceneState.nowMs,
@@ -59,13 +51,10 @@ export function buildEffectRuntimeState(params: {
     manaRegen: params.manaRegen,
     manaRegenRemainder: params.sceneState.manaRegenRemainder,
     poisoned: params.poisoned,
-    poisonedRemainingMs: params.sceneState.poisonedRemainingMs,
-    poisonDamagePerSecond: params.poisonDamagePerSecond ?? DEFAULT_POISON_DAMAGE_PER_SECOND,
-    poisonDamageRemainder: params.sceneState.poisonDamageRemainder,
     guardBuffRemainingMs: params.guardBuffRemainingMs,
     activeItemBuffs: params.sceneState.activeItemBuffs,
     itemCooldowns: params.sceneState.itemCooldowns,
-    timedModifiers: params.sceneState.timedModifiers,
+    activeDebuffs: params.sceneState.activeDebuffs,
   }
 }
 
@@ -76,11 +65,9 @@ export function applyEffectRuntimeWorkerState(
   sceneState.nowMs = nextState.currentTimeMs
   sceneState.healthRegenRemainder = nextState.healthRegenRemainder
   sceneState.manaRegenRemainder = nextState.manaRegenRemainder
-  sceneState.poisonedRemainingMs = nextState.poisonedRemainingMs
-  sceneState.poisonDamageRemainder = nextState.poisonDamageRemainder
   sceneState.activeItemBuffs = nextState.activeItemBuffs
   sceneState.itemCooldowns = nextState.itemCooldowns
-  sceneState.timedModifiers = nextState.timedModifiers
+  sceneState.activeDebuffs = nextState.activeDebuffs
 }
 
 export function createEffectRuntimeProgressData(
@@ -88,14 +75,13 @@ export function createEffectRuntimeProgressData(
   serialize: {
     activeItemBuffs: (activeItemBuffs: ActiveItemBuffRuntime[], nowMs: number) => ActiveItemBuffSnapshot[]
     itemCooldowns: (itemCooldowns: ItemCooldownRuntime[], nowMs: number) => ItemCooldownSnapshot[]
-    timedModifiers: (timedModifiers: TimedModifierRuntime[], nowMs: number) => TimedModifierSnapshot[]
+    activeDebuffs: (activeDebuffs: EffectDebuffRuntime[], nowMs: number) => EffectDebuffSnapshot[]
   }
 ): EffectRuntimeProgressData {
   return {
-    poisonedRemainingMs: sceneState.poisonedRemainingMs,
     activeItemBuffs: serialize.activeItemBuffs(sceneState.activeItemBuffs, sceneState.nowMs),
     itemCooldowns: serialize.itemCooldowns(sceneState.itemCooldowns, sceneState.nowMs),
-    timedModifiers: serialize.timedModifiers(sceneState.timedModifiers, sceneState.nowMs),
+    activeDebuffs: serialize.activeDebuffs(sceneState.activeDebuffs, sceneState.nowMs),
   }
 }
 
@@ -110,25 +96,16 @@ export function getActiveBuffSummaryText(params: {
   return activeBuffs.length > 0 ? activeBuffs.join(', ') : 'none'
 }
 
-export function getActiveDebuffSummaryText(params: {
-  sceneState: EffectRuntimeSceneState
-  poisonDamagePerSecond?: number
-}): string {
-  const debuffs: string[] = []
-
-  if (params.sceneState.poisonedRemainingMs > 0) {
-    debuffs.push(
-      `poison ${(params.sceneState.poisonedRemainingMs / 1000).toFixed(1)}s @${(params.poisonDamagePerSecond ?? DEFAULT_POISON_DAMAGE_PER_SECOND).toFixed(1)}/s`
-    )
-  }
-
-  for (const modifier of params.sceneState.timedModifiers) {
-    if (modifier.expiresAt <= params.sceneState.nowMs) {
-      continue
-    }
-
-    debuffs.push(`${modifier.id} ${((modifier.expiresAt - params.sceneState.nowMs) / 1000).toFixed(1)}s`)
-  }
+export function getActiveDebuffSummaryText(sceneState: EffectRuntimeSceneState): string {
+  const debuffs = sceneState.activeDebuffs
+    .filter(debuff => debuff.expiresAt > sceneState.nowMs)
+    .map(debuff => {
+      const parts = [`${debuff.displayName} ${((debuff.expiresAt - sceneState.nowMs) / 1000).toFixed(1)}s`]
+      if (debuff.damagePerSecond) {
+        parts.push(`@${debuff.damagePerSecond.toFixed(1)}/s`)
+      }
+      return parts.join(' ')
+    })
 
   return debuffs.length > 0 ? debuffs.join(', ') : 'none'
 }
@@ -139,6 +116,12 @@ export function getItemCooldownSummaryText(sceneState: EffectRuntimeSceneState):
     .map(cooldown => `${cooldown.group} ${((cooldown.expiresAt - sceneState.nowMs) / 1000).toFixed(1)}s`)
 
   return activeCooldowns.length > 0 ? activeCooldowns.join(', ') : 'none'
+}
+
+export function getActiveDebuffStatModifiers(sceneState: EffectRuntimeSceneState) {
+  return sceneState.activeDebuffs
+    .filter(debuff => debuff.expiresAt > sceneState.nowMs && debuff.statModifiers)
+    .map(debuff => debuff.statModifiers!)
 }
 
 export function areEffectRuntimeStatesEqual(a: EffectRuntimeState, b: EffectRuntimeState): boolean {
@@ -152,13 +135,10 @@ export function areEffectRuntimeStatesEqual(a: EffectRuntimeState, b: EffectRunt
     a.manaRegen === b.manaRegen &&
     a.manaRegenRemainder === b.manaRegenRemainder &&
     a.poisoned === b.poisoned &&
-    a.poisonedRemainingMs === b.poisonedRemainingMs &&
-    a.poisonDamagePerSecond === b.poisonDamagePerSecond &&
-    a.poisonDamageRemainder === b.poisonDamageRemainder &&
     a.guardBuffRemainingMs === b.guardBuffRemainingMs &&
     areActiveItemBuffsEqual(a.activeItemBuffs, b.activeItemBuffs) &&
     areItemCooldownsEqual(a.itemCooldowns, b.itemCooldowns) &&
-    areTimedModifiersEqual(a.timedModifiers, b.timedModifiers)
+    areActiveDebuffsEqual(a.activeDebuffs, b.activeDebuffs)
 }
 
 function areActiveItemBuffsEqual(a: ActiveItemBuffRuntime[], b: ActiveItemBuffRuntime[]): boolean {
@@ -189,25 +169,35 @@ function areItemCooldownsEqual(a: ItemCooldownRuntime[], b: ItemCooldownRuntime[
   return true
 }
 
-function areTimedModifiersEqual(a: TimedModifierRuntime[], b: TimedModifierRuntime[]): boolean {
+function areActiveDebuffsEqual(a: EffectDebuffRuntime[], b: EffectDebuffRuntime[]): boolean {
   if (a.length !== b.length) {
     return false
   }
 
   for (let index = 0; index < a.length; index++) {
-    if (a[index].id !== b[index].id || a[index].expiresAt !== b[index].expiresAt) {
+    const left = a[index]
+    const right = b[index]
+    if (
+      left.id !== right.id ||
+      left.displayName !== right.displayName ||
+      left.expiresAt !== right.expiresAt ||
+      left.damagePerSecond !== right.damagePerSecond ||
+      left.damageRemainder !== right.damageRemainder ||
+      left.blocksHealthRegen !== right.blocksHealthRegen ||
+      left.guardMitigatesDamage !== right.guardMitigatesDamage
+    ) {
       return false
     }
 
-    const aEntries = Object.entries(a[index].modifiers)
-    const bEntries = Object.entries(b[index].modifiers)
-    if (aEntries.length !== bEntries.length) {
+    const leftEntries = Object.entries(left.statModifiers ?? {})
+    const rightEntries = Object.entries(right.statModifiers ?? {})
+    if (leftEntries.length !== rightEntries.length) {
       return false
     }
 
-    for (const [key, value] of aEntries) {
-      const targetModifiers = b[index].modifiers as Record<string, number | undefined>
-      if (targetModifiers[key] !== value) {
+    for (const [key, value] of leftEntries) {
+      const target = right.statModifiers as Record<string, number | undefined> | undefined
+      if ((target?.[key] ?? undefined) !== value) {
         return false
       }
     }

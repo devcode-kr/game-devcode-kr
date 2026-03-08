@@ -5,7 +5,10 @@ import {
   getInventoryStackViews,
   type InventoryState,
 } from './Inventory'
-import { getItemDefinition } from './ItemCatalog'
+import {
+  getItemDefinition,
+  isBeltCompatibleItemDefinition,
+} from './ItemCatalog'
 
 export function addInventoryItemBatch(
   inventory: InventoryState,
@@ -68,7 +71,7 @@ export function addInventoryItemBatchToInventories(
   inventories: InventoryState[]
 ): number {
   const definition = getItemDefinition(itemDefinitionId)
-  const orderedInventories = definition.type === 'consumable'
+  const orderedInventories = isBeltCompatibleItemDefinition(definition)
     ? inventories
     : [...inventories].reverse()
   let addedCount = 0
