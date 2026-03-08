@@ -2,16 +2,28 @@ import * as Phaser from 'phaser'
 import { cellCenter, type IsoPoint, worldToScreen } from '../iso'
 import { MonsterCharacter } from '../characters/MonsterCharacter'
 import { CharacterController } from '../characters/CharacterController'
-import { updateCharacterMovement } from '../characters/CharacterMovementRuntime'
 import { Monster } from '../entities/Monster'
-import type { BSPDungeon } from '../map/BSPDungeon'
+import { getMonsterCombatDefinition, type MonsterArchetypeId } from '../interactions/MonsterCombatDefinitions'
 import type { MonsterSpawn } from './WorldObjects'
+
+export const MONSTER_COMBAT_STATES = {
+  idle: 'idle',
+  chase: 'chase',
+  attack: 'attack',
+  return: 'return',
+} as const
+
+export type MonsterCombatState =
+  (typeof MONSTER_COMBAT_STATES)[keyof typeof MONSTER_COMBAT_STATES]
 
 export interface MonsterActor {
   id: string
+  archetypeId: MonsterArchetypeId
   character: MonsterCharacter
   controller: CharacterController
   entity: Monster
+  homePosition: Phaser.Math.Vector2
+  combatState: MonsterCombatState
   decisionCooldownMs: number
 }
 
@@ -20,9 +32,10 @@ export function createMonsterActors(
   spawns: MonsterSpawn[]
 ): MonsterActor[] {
   return spawns.map((spawn, index) => {
+    const definition = getMonsterCombatDefinition(spawn.archetypeId)
     const character = new MonsterCharacter({
       id: spawn.id,
-      displayName: `Monster ${index + 1}`,
+      displayName: `${definition.label} ${index + 1}`,
     })
     const controller = new CharacterController(character, 0.24)
     const position = cellCenter(spawn.tileX, spawn.tileY)
@@ -31,9 +44,15 @@ export function createMonsterActors(
 
     return {
       id: spawn.id,
+      archetypeId: spawn.archetypeId,
       character,
       controller,
-      entity: new Monster(scene),
+      entity: new Monster(scene, {
+        fillColor: definition.bodyFillColor,
+        strokeColor: definition.bodyStrokeColor,
+      }),
+      homePosition: new Phaser.Math.Vector2(position.x, position.y),
+      combatState: MONSTER_COMBAT_STATES.idle,
       decisionCooldownMs: randomDecisionCooldown(),
     }
   })
@@ -42,34 +61,6 @@ export function createMonsterActors(
 export function destroyMonsterActors(monsters: MonsterActor[]): void {
   for (const monster of monsters) {
     monster.entity.destroy()
-  }
-}
-
-export function updateMonsterActors(params: {
-  monsters: MonsterActor[]
-  deltaMs: number
-  dungeon: BSPDungeon
-  canOccupy: (monster: MonsterActor, x: number, y: number) => boolean
-}): void {
-  for (const monster of params.monsters) {
-    monster.decisionCooldownMs -= params.deltaMs
-
-    if (!monster.controller.hasDestination() && monster.decisionCooldownMs <= 0) {
-      assignRandomMonsterDestination(monster, params.dungeon, params.canOccupy)
-      monster.decisionCooldownMs = randomDecisionCooldown()
-    }
-
-    const movement = updateCharacterMovement({
-      character: monster.character,
-      mover: monster.controller,
-      deltaMs: params.deltaMs,
-      inputDirection: new Phaser.Math.Vector2(),
-      canOccupy: (x, y) => params.canOccupy(monster, x, y),
-    })
-
-    if (movement.blockedClickMove) {
-      monster.controller.clearDestination()
-    }
   }
 }
 
@@ -91,37 +82,6 @@ export function drawMonsterActors(params: {
       params.deltaMs
     )
   }
-}
-
-function assignRandomMonsterDestination(
-  monster: MonsterActor,
-  dungeon: BSPDungeon,
-  canOccupy: (monster: MonsterActor, x: number, y: number) => boolean
-): void {
-  const current = monster.controller.getMapPosition()
-  const tileX = Math.floor(current.x)
-  const tileY = Math.floor(current.y)
-  const candidates = [
-    { x: tileX - 1, y: tileY },
-    { x: tileX + 1, y: tileY },
-    { x: tileX, y: tileY - 1 },
-    { x: tileX, y: tileY + 1 },
-  ].filter(candidate => {
-    if (!dungeon.isWalkable(candidate.x, candidate.y)) {
-      return false
-    }
-
-    const center = cellCenter(candidate.x, candidate.y)
-    return canOccupy(monster, center.x, center.y)
-  })
-
-  if (candidates.length === 0) {
-    return
-  }
-
-  const target = Phaser.Math.RND.pick(candidates)
-  const center = cellCenter(target.x, target.y)
-  monster.controller.setDestination(center.x, center.y)
 }
 
 function randomDecisionCooldown(): number {

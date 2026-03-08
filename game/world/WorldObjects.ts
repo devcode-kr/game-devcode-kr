@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser'
 import type { DialogueScript, NpcProfile } from '../npc/NpcDialogue'
+import type { MonsterArchetypeId } from '../interactions/MonsterCombatDefinitions'
 
 export type InteractableKind = 'chest' | 'locked-chest' | 'stairs' | 'npc'
 
@@ -34,4 +35,5 @@ export interface MonsterSpawn {
   id: string
   tileX: number
   tileY: number
+  archetypeId: MonsterArchetypeId
 }

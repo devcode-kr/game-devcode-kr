@@ -17,12 +17,18 @@ export class Monster extends Phaser.GameObjects.Container {
   private readonly eyeRight: Phaser.GameObjects.Ellipse
   private animationState: AnimationState = 'idle'
 
-  constructor(scene: Phaser.Scene) {
+  constructor(
+    scene: Phaser.Scene,
+    palette: { fillColor: number; strokeColor: number } = {
+      fillColor: 0x9f1239,
+      strokeColor: 0xfda4af,
+    }
+  ) {
     super(scene, 0, 0)
 
     this.shadow = scene.add.ellipse(0, 12, 24, 12, 0x000000, 0.3)
-    this.bodyShape = scene.add.ellipse(0, 0, 22, 24, 0x9f1239, 1)
-    this.bodyShape.setStrokeStyle(2, 0xfda4af, 0.9)
+    this.bodyShape = scene.add.ellipse(0, 0, 22, 24, palette.fillColor, 1)
+    this.bodyShape.setStrokeStyle(2, palette.strokeColor, 0.9)
     this.eyeLeft = scene.add.ellipse(-4, -3, 3, 4, 0xf8fafc, 0.95)
     this.eyeRight = scene.add.ellipse(4, -3, 3, 4, 0xf8fafc, 0.95)
 

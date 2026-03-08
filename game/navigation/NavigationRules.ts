@@ -116,7 +116,7 @@ export function pointerToTile(params: {
   return { x: tileX, y: tileY }
 }
 
-function hasLineOfSight(
+export function hasLineOfSight(
   dungeon: BSPDungeon,
   fromX: number,
   fromY: number,

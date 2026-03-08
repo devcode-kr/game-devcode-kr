@@ -2,6 +2,7 @@ import * as Phaser from 'phaser'
 import type { BSPDungeon } from '../map/BSPDungeon'
 import type { IsoPoint } from '../iso'
 import { cellCenter } from '../iso'
+import { MONSTER_ARCHETYPE_IDS, type MonsterArchetypeId } from '../interactions/MonsterCombatDefinitions'
 import { rollChestReward } from '../loot/ChestRewards'
 import type { Interactable, InteractableKind, MonsterSpawn, Trap } from './WorldObjects'
 
@@ -193,5 +194,16 @@ function buildMonsterSpawns(
     id: `monster-${candidate.x}-${candidate.y}`,
     tileX: candidate.x,
     tileY: candidate.y,
+    archetypeId: pickMonsterArchetype(candidate.x, candidate.y),
   }))
+}
+
+function pickMonsterArchetype(tileX: number, tileY: number): MonsterArchetypeId {
+  const archetypes: MonsterArchetypeId[] = [
+    MONSTER_ARCHETYPE_IDS.skirmisher,
+    MONSTER_ARCHETYPE_IDS.brute,
+    MONSTER_ARCHETYPE_IDS.sentry,
+  ]
+
+  return archetypes[Math.abs(tileX + tileY) % archetypes.length]
 }

@@ -75,6 +75,8 @@ const EFFECT_TICK_MS = 100
 const POISON_DOT_DAMAGE_PER_SECOND = 3
 
 export class GameScene extends Phaser.Scene {
+  private fatalSceneError = false
+  private fatalSceneErrorText: Phaser.GameObjects.Text | null = null
   private player!: Player
   private readonly playerCharacter = new PlayerCharacter({
     inventoryCols: INVENTORY_COLS,
@@ -108,6 +110,10 @@ export class GameScene extends Phaser.Scene {
   private readonly hudRuntime = new GameSceneHudRuntime()
   private readonly renderRuntime = new GameSceneRenderRuntime()
   private interactionStatus = 'none'
+  private nearbyInteractable: Interactable | null = null
+  private inventorySummaryText = 'belt: empty | bag: empty'
+  private potionCount = 0
+  private keyCount = 0
   private floorIndex = 1
   private gold = 0
   private spawnTile = { x: 0, y: 0 }
@@ -163,20 +169,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    this.cameras.main.setBackgroundColor(0x111111)
-    this.effectRuntimeSceneState.nowMs = this.time.now
+    try {
+      this.cameras.main.setBackgroundColor(0x111111)
+      this.effectRuntimeSceneState.nowMs = this.time.now
 
-    this.bakeDiamonds()
-    bakeEffectIconTextures(this)
+      this.bakeDiamonds()
+      bakeEffectIconTextures(this)
 
-    for (let i = 0; i < POOL_SIZE; i++) {
-      this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
-    }
+      for (let i = 0; i < POOL_SIZE; i++) {
+        this.tilePool.push(this.add.image(-9999, -9999, 'tile-a').setDepth(1))
+      }
 
-    this.pathGraphics = this.add.graphics()
-    this.pathGraphics.setDepth(9996)
+      this.pathGraphics = this.add.graphics()
+      this.pathGraphics.setDepth(9996)
 
-    this.player = new Player(this, this.playerController)
+      this.player = new Player(this, this.playerController)
 
     this.hoverMarker = this.add.ellipse(0, 0, 28, 14)
     this.hoverMarker.setStrokeStyle(2, 0xf59e0b, 0.95)
@@ -207,9 +214,7 @@ export class GameScene extends Phaser.Scene {
           this.useInventoryItem(itemDefinitionId)
         },
         onInventoryChanged: () => {
-          this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
-          this.playerStateRuntime.syncEffectRuntimeState()
-          this.saveProgress()
+          this.handleInventoryChanged()
         },
         setInteractionStatus: status => {
           this.interactionStatus = status
@@ -222,10 +227,7 @@ export class GameScene extends Phaser.Scene {
       {
         isDead: () => this.isDead(),
         saveProgress: () => this.saveProgress(),
-        syncPlayerState: () => {
-          this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
-          this.playerStateRuntime.syncEffectRuntimeState()
-        },
+        syncPlayerState: () => this.syncPlayerStateRuntime(),
         onAdvanceFloor: () => this.generateFloor(false),
         onGoldDelta: amount => {
           this.gold += amount
@@ -250,10 +252,7 @@ export class GameScene extends Phaser.Scene {
         getTrapAt: (tileX, tileY) => this.traps.find(candidate => candidate.tileX === tileX && candidate.tileY === tileY),
         getNowMs: () => this.time.now,
         getEffectNowMs: () => this.playerStateRuntime.getEffectRuntimeNowMs(),
-        syncPlayerState: () => {
-          this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
-          this.playerStateRuntime.syncEffectRuntimeState()
-        },
+        syncPlayerState: () => this.syncPlayerStateRuntime(),
         saveProgress: () => this.saveProgress(),
         setInteractionStatus: status => {
           this.interactionStatus = status
@@ -290,10 +289,7 @@ export class GameScene extends Phaser.Scene {
         getEffectNowMs: () => this.playerStateRuntime.getEffectRuntimeNowMs(),
         getDefaultHealth: () => this.playerCharacter.getMaxHealth(),
         getDefaultMana: () => this.playerCharacter.getMaxMana(),
-        syncPlayerState: () => {
-          this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
-          this.playerStateRuntime.syncEffectRuntimeState()
-        },
+        syncPlayerState: () => this.syncPlayerStateRuntime(),
       }
     )
     this.navigationRuntime = new SceneNavigationRuntime(
@@ -323,10 +319,7 @@ export class GameScene extends Phaser.Scene {
         setInteractionStatus: status => {
           this.interactionStatus = status
         },
-        syncPlayerState: () => {
-          this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
-          this.playerStateRuntime.syncEffectRuntimeState()
-        },
+        syncPlayerState: () => this.syncPlayerStateRuntime(),
       }
     )
     this.wasd = {
@@ -366,9 +359,11 @@ export class GameScene extends Phaser.Scene {
     )
 
     this.loadProgress()
+    this.refreshInventoryDerivedState()
     this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
     this.playerStateRuntime.initializeEffectRuntimeWorker(EFFECT_TICK_MS)
     this.generateFloor(true)
+    this.nearbyInteractable = this.computeNearbyInteractable()
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.playerStateRuntime.destroy()
       this.effectHud.destroy()
@@ -416,10 +411,18 @@ export class GameScene extends Phaser.Scene {
       }
     })
 
-    this.drawDungeon(false)
+      this.drawDungeon(false)
+    } catch (error) {
+      this.showFatalSceneError('GameScene.create failed', error)
+    }
   }
 
   update(_time: number, delta: number) {
+    if (this.fatalSceneError) {
+      return
+    }
+
+    try {
     const movementResult = this.navigationRuntime.updateMovement({
       deltaMs: delta,
       blocked: Boolean(this.interactionRuntime.getActiveDialogue()) || this.isDead(),
@@ -427,6 +430,7 @@ export class GameScene extends Phaser.Scene {
       cursors: this.cursors,
     })
     const { isMoving } = movementResult
+    this.nearbyInteractable = this.computeNearbyInteractable()
 
     this.playerStateRuntime.advanceEffectRuntime(delta)
     this.combatRuntime.updateMonsterCombat({
@@ -479,6 +483,9 @@ export class GameScene extends Phaser.Scene {
     this.tryInteract()
 
     this.drawDungeon(isMoving)
+    } catch (error) {
+      this.showFatalSceneError('GameScene.update failed', error)
+    }
   }
 
   private bakeDiamonds() {
@@ -539,16 +546,16 @@ export class GameScene extends Phaser.Scene {
       interactionStatus: this.interactionStatus,
       journeyChapter: this.journeyLog.currentChapter,
       achievementsText: this.achievements.unlocked.length > 0 ? this.achievements.unlocked.join(', ') : 'none',
-      potionCount: this.getItemCount('potion_minor'),
-      keyCount: this.getItemCount('utility_key'),
-      inventorySummary: this.getInventorySummaryText(),
+      potionCount: this.potionCount,
+      keyCount: this.keyCount,
+      inventorySummary: this.inventorySummaryText,
       isMoving,
       searchBudget: this.navigationRuntime.getPathSearchBudget(),
       searchBudgetMultiplier: PATH_SEARCH_BUDGET_MULTIPLIER,
       nowMs: this.time.now,
       effectNowMs: this.playerStateRuntime.getEffectRuntimeNowMs(),
       dialoguePanelState: this.interactionRuntime.getDialoguePanelState(),
-      nearbyInteractable: this.getNearbyInteractable(),
+      nearbyInteractable: this.nearbyInteractable,
       getTileTexture: (tile, gx, gy) => this.navigationRuntime.getTileTexture(tile, gx, gy),
       isDead: this.isDead(),
     })
@@ -587,7 +594,7 @@ export class GameScene extends Phaser.Scene {
 
     this.interactionRuntime.tryInteract({
       interactKey: this.interactKey,
-      interactable: this.getNearbyInteractable(),
+      interactable: this.nearbyInteractable,
       journeyLog: this.journeyLog,
       achievements: this.achievements,
     })
@@ -641,7 +648,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryRuntime.toggle()
   }
 
-  private getNearbyInteractable(): Interactable | null {
+  private computeNearbyInteractable(): Interactable | null {
     return findNearbyInteractable(this.interactables, this.playerController.getMapPosition(), INTERACTION_RANGE)
   }
 
@@ -681,6 +688,7 @@ export class GameScene extends Phaser.Scene {
     this.gold = nextState.gold
     this.journeyLog = nextState.journeyLog
     this.achievements = nextState.achievements
+    this.refreshInventoryDerivedState()
   }
 
   private getItemCount(itemDefinitionId: string): number {
@@ -695,6 +703,23 @@ export class GameScene extends Phaser.Scene {
       `belt: ${summarizeInventory(this.playerCharacter.getBeltInventory())}`,
       `bag: ${summarizeInventory(this.playerCharacter.getInventory())}`,
     ].join(' | ')
+  }
+
+  private syncPlayerStateRuntime(): void {
+    this.playerStateRuntime.refreshCharacterStatSources(this.playerStateRuntime.getEffectRuntimeNowMs())
+    this.playerStateRuntime.syncEffectRuntimeState()
+  }
+
+  private handleInventoryChanged(): void {
+    this.refreshInventoryDerivedState()
+    this.syncPlayerStateRuntime()
+    this.saveProgress()
+  }
+
+  private refreshInventoryDerivedState(): void {
+    this.potionCount = this.getItemCount('potion_minor')
+    this.keyCount = this.getItemCount('utility_key')
+    this.inventorySummaryText = this.getInventorySummaryText()
   }
 
   private isDead(): boolean {
@@ -716,6 +741,33 @@ export class GameScene extends Phaser.Scene {
       return
     }
 
+    this.refreshInventoryDerivedState()
     this.saveProgress()
+  }
+
+  private showFatalSceneError(context: string, error: unknown): void {
+    this.fatalSceneError = true
+    console.error(context, error)
+    this.cameras.main.setBackgroundColor(0x140f19)
+
+    const message = error instanceof Error ? error.message : String(error)
+    if (!this.fatalSceneErrorText) {
+      this.fatalSceneErrorText = this.add.text(24, 24, '', {
+        color: '#f8fafc',
+        fontSize: '18px',
+        fontFamily: 'monospace',
+        wordWrap: { width: Math.max(this.scale.width - 48, 240) },
+        backgroundColor: '#00000088',
+        padding: { x: 12, y: 10 },
+      })
+      this.fatalSceneErrorText.setDepth(11000)
+      this.fatalSceneErrorText.setScrollFactor(0)
+    }
+
+    this.fatalSceneErrorText.setText([
+      'Game scene failed to render.',
+      context,
+      message,
+    ])
   }
 }
